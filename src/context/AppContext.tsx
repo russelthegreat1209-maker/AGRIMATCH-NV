@@ -20,6 +20,8 @@ import {
   ReactionType,
   ModerationReport,
   AiHistoryEntry,
+  DaNewsArticle,
+  AgribeeVideoId,
 } from '../types';
 import {
   SEED_ACCOUNTS,
@@ -115,6 +117,19 @@ interface AppContextType {
   } | null;
   setSelectedRoute: (route: AppContextType['selectedRoute']) => void;
 
+  // Theme, Simple Mode, Sidebar & AgriBee Video Guides
+  themeMode: 'light' | 'dark';
+  toggleThemeMode: () => void;
+  isSimpleMode: boolean;
+  setIsSimpleMode: (simple: boolean) => void;
+  isSidebarCollapsed: boolean;
+  setIsSidebarCollapsed: (collapsed: boolean) => void;
+  isMobileSidebarOpen: boolean;
+  setIsMobileSidebarOpen: (open: boolean) => void;
+  activeAgribeeVideo: AgribeeVideoId | null;
+  setActiveAgribeeVideo: (video: AgribeeVideoId | null) => void;
+  daNews: DaNewsArticle[];
+
   // Actions
   switchDemoAccount: (accountId: string) => void;
   switchDemoRole: (role: StakeholderRole) => void;
@@ -152,6 +167,7 @@ interface AppContextType {
 
   // Marketplace & Moderation Actions
   addNewCommodity: (crop: Partial<CommodityItem>) => void;
+  updateCommodityStock: (commodityId: string, newAvailableKg: number, newPricePerKg?: number) => void;
   approveCommodity: (commodityId: string) => void;
   rejectCommodity: (commodityId: string) => void;
   verifyAndBoostCommodity: (commodityId: string) => void;
@@ -264,8 +280,84 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
 
-  // DEMO MODE ISOLATED SANDBOX DATA
-  const [demoCurrentUser, setDemoCurrentUser] = useState<UserAccount | null>(() => SEED_ACCOUNTS[0]);
+  // Theme Mode (Light / Dark)
+  const [themeMode, setThemeMode] = useState<'light' | 'dark'>(() => {
+    try {
+      const saved = localStorage.getItem('agrimatch_theme');
+      if (saved === 'dark' || saved === 'light') return saved;
+    } catch {
+      // ignore
+    }
+    return 'light';
+  });
+
+  useEffect(() => {
+    const root = document.documentElement;
+    if (themeMode === 'dark') {
+      root.classList.add('dark');
+    } else {
+      root.classList.remove('dark');
+    }
+    try {
+      localStorage.setItem('agrimatch_theme', themeMode);
+    } catch {
+      // ignore
+    }
+  }, [themeMode]);
+
+  const toggleThemeMode = () => {
+    setThemeMode((prev) => (prev === 'light' ? 'dark' : 'light'));
+  };
+
+  // Simple Mode (Plain, concise farmer-friendly wording by default)
+  const [isSimpleMode, setIsSimpleModeState] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('agrimatch_simple_mode');
+      return saved ? saved === 'true' : true;
+    } catch {
+      return true;
+    }
+  });
+
+  const setIsSimpleMode = (simple: boolean) => {
+    setIsSimpleModeState(simple);
+    try {
+      localStorage.setItem('agrimatch_simple_mode', String(simple));
+    } catch {
+      // ignore
+    }
+  };
+
+  // Left Sidebar & AgriBee Video States
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState<boolean>(false);
+  const [isMobileSidebarOpen, setIsMobileSidebarOpen] = useState<boolean>(false);
+  const [activeAgribeeVideo, setActiveAgribeeVideo] = useState<AgribeeVideoId | null>(null);
+  const [daNews, setDaNews] = useState<DaNewsArticle[]>([]);
+
+  // Unauthenticated Landing Gate by default unless restored from sessionStorage
+  const [demoCurrentUser, setDemoCurrentUserState] = useState<UserAccount | null>(() => {
+    try {
+      const saved = sessionStorage.getItem('agrimatch_session_user');
+      if (saved) return JSON.parse(saved) as UserAccount;
+    } catch {
+      // ignore
+    }
+    return null;
+  });
+
+  const setDemoCurrentUser = (user: UserAccount | null) => {
+    setDemoCurrentUserState(user);
+    try {
+      if (user) {
+        sessionStorage.setItem('agrimatch_session_user', JSON.stringify(user));
+      } else {
+        sessionStorage.removeItem('agrimatch_session_user');
+      }
+    } catch {
+      // ignore
+    }
+  };
+
   const [demoAccounts, setDemoAccounts] = useState<UserAccount[]>(SEED_ACCOUNTS);
   const [demoCommodities, setDemoCommodities] = useState<CommodityItem[]>(SEED_COMMODITIES);
   const [demoOrders, setDemoOrders] = useState<OrderRecord[]>(SEED_ORDERS);
@@ -273,10 +365,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
   // LIVE PRODUCTION REAL-TIME DATA
   const [liveCurrentUser, setLiveCurrentUser] = useState<UserAccount | null>(null);
-  const [liveAccounts, setLiveAccounts] = useState<UserAccount[]>([]);
-  const [liveCommodities, setLiveCommodities] = useState<CommodityItem[]>([]);
-  const [liveOrders, setLiveOrders] = useState<OrderRecord[]>([]);
-  const [livePosts, setLivePosts] = useState<CommunityPost[]>([]);
+  const [liveAccounts, setLiveAccounts] = useState<UserAccount[]>(SEED_ACCOUNTS);
+  const [liveCommodities, setLiveCommodities] = useState<CommodityItem[]>(SEED_COMMODITIES);
+  const [liveOrders, setLiveOrders] = useState<OrderRecord[]>(SEED_ORDERS);
+  const [livePosts, setLivePosts] = useState<CommunityPost[]>(SEED_COMMUNITY_POSTS);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
 
   const currentUser = environmentMode === 'production' ? liveCurrentUser : demoCurrentUser;
@@ -408,16 +500,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     };
   }, []);
 
-  // Active tab defaults to public-landing as required by Entry Point & Gatekeeper spec
-  const [activeTab, setActiveTab] = useState<string>(() => {
+  // Active tab defaults to public-landing when unauthenticated
+  const [activeTab, setActiveTabState] = useState<string>(() => {
     try {
+      const savedUser = sessionStorage.getItem('agrimatch_session_user');
       const savedTab = localStorage.getItem('agrimatch_active_tab');
-      if (savedTab && savedTab !== 'framework') return savedTab;
+      if (savedUser && savedTab && savedTab !== 'framework' && savedTab !== 'public-landing') {
+        return savedTab;
+      }
       return 'public-landing';
     } catch {
       return 'public-landing';
     }
   });
+
+  const setActiveTab = (tab: string) => {
+    setActiveTabState(tab);
+    try {
+      localStorage.setItem('agrimatch_active_tab', tab);
+    } catch {
+      // ignore
+    }
+  };
 
   const [isGuestLockOpen, setIsGuestLockOpen] = useState(false);
   const [guestAttemptedTab, setGuestAttemptedTab] = useState('');
@@ -486,12 +590,96 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setIsInteractiveTourActive(true);
   };
 
+  // Fetch Official DA News (da.gov.ph) and auto-seed Community feed
   useEffect(() => {
-    setCounters((c) => ({
-      ...c,
-      totalVisitors: c.totalVisitors + 1,
-    }));
+    let mounted = true;
+    fetch('/api/news/da')
+      .then((res) => res.json())
+      .then((data) => {
+        if (!mounted || !Array.isArray(data.articles)) return;
+        setDaNews(data.articles);
+        // Auto-inject top DA news articles into communityPosts if not already present
+        const daPosts: CommunityPost[] = data.articles.slice(0, 3).map((art: DaNewsArticle) => ({
+          id: `da-auto-${art.id}`,
+          authorId: 'gov_da_official',
+          authorName: 'Department of Agriculture (da.gov.ph)',
+          authorRole: 'Government',
+          authorAvatar: '',
+          authorMunicipality: 'Bayombong',
+          category: 'Price Alert',
+          content: `${art.title} — ${art.summary || art.excerpt || ''}`,
+          imageUrl: art.imageUrl,
+          externalArticleUrl: art.url,
+          externalSourceName: art.source || 'da.gov.ph',
+          timestamp: art.publishedAt,
+          likes: ['farmer_01', 'buyer_01', 'coop_01'],
+          reactions: { heart: ['farmer_01', 'buyer_01', 'coop_01'], wow: ['supplier_01'] },
+          comments: [],
+        }));
+        setDemoPosts((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const fresh = daPosts.filter((p) => !existingIds.has(p.id));
+          return fresh.length > 0 ? [...fresh, ...prev] : prev;
+        });
+        setLivePosts((prev) => {
+          const existingIds = new Set(prev.map((p) => p.id));
+          const fresh = daPosts.filter((p) => !existingIds.has(p.id));
+          return fresh.length > 0 ? [...fresh, ...prev] : prev;
+        });
+      })
+      .catch(() => {
+        // non-blocking
+      });
+    return () => {
+      mounted = false;
+    };
   }, []);
+
+  // Live Session Heartbeat & Accurate Role Breakdown Telemetry
+  useEffect(() => {
+    let sessionId = 'sess-default';
+    try {
+      const existing = sessionStorage.getItem('agrimatch_telemetry_session_id');
+      if (existing) {
+        sessionId = existing;
+      } else {
+        sessionId = `sess-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        sessionStorage.setItem('agrimatch_telemetry_session_id', sessionId);
+      }
+    } catch {
+      // ignore
+    }
+
+    const sendHeartbeat = async () => {
+      try {
+        const res = await fetch('/api/telemetry/heartbeat', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sessionId,
+            userId: currentUser?.id || 'guest',
+            role: currentUser?.role || 'Guest',
+            action: 'heartbeat',
+          }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setCounters((c) => ({
+            ...c,
+            currentlyLoggedIn: data.currentlyLoggedIn ?? c.currentlyLoggedIn,
+            totalVisitors: data.totalVisitors ?? c.totalVisitors,
+            loggedInByRole: data.loggedInByRole ?? c.loggedInByRole,
+          }));
+        }
+      } catch {
+        // fallback to local counter
+      }
+    };
+
+    void sendHeartbeat();
+    const interval = setInterval(sendHeartbeat, 30000);
+    return () => clearInterval(interval);
+  }, [currentUser?.id, currentUser?.role]);
 
   const navigateToTabWithGuard = (tab: string) => {
     if (!currentUser && tab !== 'public-landing') {
@@ -611,9 +799,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
 
     setDemoCurrentUser(acc);
-    addNotification(`Switched active profile to ${acc.name} (${acc.role})`, 'success');
+    addNotification(`Signed in as ${acc.name} (${acc.role})`, 'success');
     if (acc.role === 'MASTER_ADMIN') {
       setActiveTab('admin');
+    } else if (activeTab === 'public-landing') {
+      setActiveTab('dashboard');
     }
   };
 
@@ -627,9 +817,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const acc = demoAccounts.find((a) => a.role === role);
     if (acc) {
       setDemoCurrentUser(acc);
-      addNotification(`Demo Role switched to ${role}: ${acc.name}`, 'success');
+      addNotification(`Active profile: ${acc.name} (${role})`, 'success');
       if (role === 'MASTER_ADMIN') {
         setActiveTab('admin');
+      } else if (activeTab === 'public-landing') {
+        setActiveTab('dashboard');
       }
     }
   };
@@ -637,7 +829,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const loginWithGoogle = async () => {
     try {
       await signInWithGoogle();
-      addNotification('Signed in with Google Firebase Auth!', 'success');
+      addNotification('Signed in with Google Gmail!', 'success');
       setActiveTab('dashboard');
     } catch {
       addNotification('Google Sign-In failed or was cancelled.', 'alert');
@@ -664,6 +856,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       } else {
         setDemoCurrentUser(match);
       }
+      if (activeTab === 'public-landing') {
+        setActiveTab('dashboard');
+      }
       addNotification(`Welcome back, ${match.name}!`, 'success');
       return { success: true };
     }
@@ -673,7 +868,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       message:
         environmentMode === 'production'
           ? 'Account not found in Live database. Please Register or Sign In with Google.'
-          : 'Invalid credentials. Try a stakeholder email or use the Demo Switcher.',
+          : 'Invalid credentials. Try a stakeholder email or choose a quick profile below.',
     };
   };
 
@@ -723,7 +918,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       cooperativesCount: newAcc.role === 'Cooperative' ? c.cooperativesCount + 1 : c.cooperativesCount,
     }));
 
-    addNotification(`Account created successfully as ${newAcc.role}!`, 'success');
+    setActiveTab('dashboard');
+    setActiveAgribeeVideo('congrats-dashboard');
+    addNotification(`Congratulations ${newAcc.name}! Account created as ${newAcc.role}.`, 'success');
     return newAcc;
   };
 
@@ -1085,6 +1282,33 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         : `Crop listing "${newCrop.name}" submitted! Status: PENDING Admin review.`,
       cropData.manualGradeOverride ? 'alert' : 'info'
     );
+  };
+
+  const updateCommodityStock = (
+    commodityId: string,
+    newAvailableKg: number,
+    newPricePerKg?: number
+  ) => {
+    setCommodities((prev) =>
+      prev.map((c) => {
+        if (c.id !== commodityId) return c;
+        const updated: CommodityItem = {
+          ...c,
+          availableKg: Math.max(0, newAvailableKg),
+          pricePerKg: newPricePerKg !== undefined && newPricePerKg > 0 ? newPricePerKg : c.pricePerKg,
+        };
+        void syncToDatabase('commodity', 'upsert', updated as unknown as Record<string, unknown>);
+        if (environmentMode === 'production') {
+          try {
+            void setDoc(doc(db, 'live_commodities', updated.id), updated, { merge: true });
+          } catch {
+            // fallback
+          }
+        }
+        return updated;
+      })
+    );
+    addNotification('Inventory stock & price updated in real time.', 'success');
   };
 
   const approveCommodity = (commodityId: string) => {
@@ -1731,6 +1955,17 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setRequestedCommunityView,
         selectedRoute,
         setSelectedRoute,
+        themeMode,
+        toggleThemeMode,
+        isSimpleMode,
+        setIsSimpleMode,
+        isSidebarCollapsed,
+        setIsSidebarCollapsed,
+        isMobileSidebarOpen,
+        setIsMobileSidebarOpen,
+        activeAgribeeVideo,
+        setActiveAgribeeVideo,
+        daNews,
         switchDemoAccount,
         switchDemoRole,
         loginWithCredentials,
@@ -1747,6 +1982,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         activeChatThreadId,
         setActiveChatThreadId,
         addNewCommodity,
+        updateCommodityStock,
         approveCommodity,
         rejectCommodity,
         verifyAndBoostCommodity,

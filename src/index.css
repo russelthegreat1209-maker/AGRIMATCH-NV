@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 @layer base {
   :root {
@@ -7,13 +8,26 @@
     --sprout-lime: #C3E956;
     --canopy-olive: #4D7111;
     --deep-forest: #1F4B2C;
+    --surface-bg: #F4FFFC;
+    --surface-text: #1F4B2C;
+  }
+
+  .dark {
+    --mint-whisper: #07150E;
+    --frosted-jade: #2E7D52;
+    --sprout-lime: #C3E956;
+    --canopy-olive: #8CE063;
+    --deep-forest: #ECFDF5;
+    --surface-bg: #07150E;
+    --surface-text: #ECFDF5;
   }
 
   body {
     font-family: 'Plus Jakarta Sans', system-ui, -apple-system, sans-serif;
-    background-color: #F4FFFC;
-    color: #1F4B2C;
+    background-color: var(--surface-bg);
+    color: var(--surface-text);
     overflow-x: hidden;
+    transition: background-color 0.25s ease, color 0.25s ease;
   }
 
   h1, h2, h3, h4, h5, h6 {
@@ -21,27 +35,102 @@
   }
 }
 
-/* Glassmorphism custom classes */
+/* Signature Green Glassmorphism with Depth (Light & Dark Adaptive) */
 .glass-light {
-  background: rgba(244, 255, 252, 0.82);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-  border: 1px solid rgba(145, 234, 175, 0.55);
+  background: linear-gradient(145deg, rgba(244, 255, 252, 0.90) 0%, rgba(230, 252, 244, 0.80) 100%);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid rgba(145, 234, 175, 0.65);
+  box-shadow: 0 12px 32px -8px rgba(31, 75, 44, 0.10), inset 0 1px 0 0 rgba(255, 255, 255, 0.75);
+}
+
+.dark .glass-light {
+  background: linear-gradient(145deg, rgba(13, 36, 24, 0.92) 0%, rgba(9, 26, 17, 0.88) 100%);
+  border: 1px solid rgba(145, 234, 175, 0.25);
+  box-shadow: 0 14px 36px -8px rgba(0, 0, 0, 0.55), inset 0 1px 0 0 rgba(145, 234, 175, 0.12);
+  color: #ECFDF5;
 }
 
 .glass-dark {
-  background: rgba(31, 75, 44, 0.88);
-  backdrop-filter: blur(20px);
-  -webkit-backdrop-filter: blur(20px);
-  border: 1px solid rgba(195, 233, 86, 0.35);
+  background: linear-gradient(145deg, rgba(31, 75, 44, 0.94) 0%, rgba(20, 53, 30, 0.92) 100%);
+  backdrop-filter: blur(22px);
+  -webkit-backdrop-filter: blur(22px);
+  border: 1px solid rgba(195, 233, 86, 0.38);
+  box-shadow: 0 16px 40px -10px rgba(10, 32, 18, 0.35), inset 0 1px 0 0 rgba(195, 233, 86, 0.2);
   color: #F4FFFC;
 }
 
+.dark .glass-dark {
+  background: linear-gradient(145deg, rgba(6, 20, 13, 0.96) 0%, rgba(12, 35, 22, 0.94) 100%);
+  border: 1px solid rgba(195, 233, 86, 0.32);
+  color: #ECFDF5;
+}
+
 .glass-card {
-  background: rgba(255, 255, 255, 0.75);
+  background: rgba(255, 255, 255, 0.84);
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(145, 234, 175, 0.45);
+  border: 1px solid rgba(145, 234, 175, 0.55);
+  box-shadow: 0 8px 24px -6px rgba(31, 75, 44, 0.08);
+}
+
+.dark .glass-card {
+  background: rgba(15, 41, 27, 0.85);
+  border: 1px solid rgba(145, 234, 175, 0.24);
+  box-shadow: 0 10px 28px -6px rgba(0, 0, 0, 0.45);
+  color: #ECFDF5;
+}
+
+/* Dark mode harmony for inner cards, inputs, and neutral text */
+.dark .bg-white {
+  background-color: rgba(14, 38, 25, 0.92);
+  color: #ECFDF5;
+}
+
+.dark .bg-white\/90,
+.dark .bg-white\/80,
+.dark .bg-white\/70 {
+  background-color: rgba(14, 38, 25, 0.85);
+  color: #ECFDF5;
+}
+
+.dark .bg-neutral-50,
+.dark .bg-neutral-100,
+.dark .bg-\[\#F4FFFC\] {
+  background-color: rgba(10, 29, 19, 0.90);
+  color: #ECFDF5;
+}
+
+.dark .text-\[\#1F4B2C\] {
+  color: #ECFDF5;
+}
+
+.dark .text-\[\#4D7111\] {
+  color: #C3E956;
+}
+
+.dark .text-neutral-800,
+.dark .text-neutral-700 {
+  color: #D1FAE5;
+}
+
+.dark .text-neutral-600,
+.dark .text-neutral-500 {
+  color: #A7F3D0;
+}
+
+.dark .border-neutral-100,
+.dark .border-neutral-200,
+.dark .border-neutral-300 {
+  border-color: rgba(145, 234, 175, 0.22);
+}
+
+.dark input,
+.dark select,
+.dark textarea {
+  background-color: rgba(9, 25, 16, 0.95);
+  color: #ECFDF5;
+  border-color: rgba(145, 234, 175, 0.30);
 }
 
 .btn-sprout {
@@ -51,9 +140,13 @@
   transition: all 0.2s ease;
 }
 
+.dark .btn-sprout {
+  color: #07150E;
+}
+
 .btn-sprout:hover {
   filter: brightness(1.05);
-  box-shadow: 0 4px 15px rgba(195, 233, 86, 0.4);
+  box-shadow: 0 6px 18px rgba(195, 233, 86, 0.42);
 }
 
 .btn-forest {
@@ -61,6 +154,12 @@
   color: #F4FFFC;
   font-weight: 600;
   transition: all 0.2s ease;
+}
+
+.dark .btn-forest {
+  background-color: #27633B;
+  color: #F4FFFC;
+  border: 1px solid rgba(195, 233, 86, 0.35);
 }
 
 .btn-forest:hover {
@@ -107,7 +206,7 @@
   height: 6px;
 }
 ::-webkit-scrollbar-track {
-  background: rgba(244, 255, 252, 0.5);
+  background: rgba(244, 255, 252, 0.25);
 }
 ::-webkit-scrollbar-thumb {
   background: rgba(77, 113, 17, 0.35);

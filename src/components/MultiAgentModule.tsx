@@ -469,6 +469,97 @@ export const MultiAgentModule: React.FC = () => {
 
   const isSelectedDomainAccessible = canAccessAgent(currentUser?.role, selectedAgent);
 
+  // Municipal Accounts, Inventory & Trend AI Compiler (for Government & Master Admin)
+  const [selectedMuniScope, setSelectedMuniScope] = useState<string>(
+    currentUser?.role === 'MASTER_ADMIN' ? 'ALL' : currentUser?.municipality || 'Bambang'
+  );
+  const [muniCompilerLoading, setMuniCompilerLoading] = useState(false);
+  const [muniCompiledReport, setMuniCompiledReport] = useState<{
+    reportTitle: string;
+    executiveSummary: string;
+    trendAnalysis: string[];
+    inventoryBreakdown: string[];
+    policyRecommendations: string[];
+  } | null>(null);
+
+  const scopedMuniAccounts = useMemo(() => {
+    if (selectedMuniScope === 'ALL') return accounts;
+    return accounts.filter((a) => a.municipality === selectedMuniScope);
+  }, [accounts, selectedMuniScope]);
+
+  const scopedMuniCommodities = useMemo(() => {
+    if (selectedMuniScope === 'ALL') return commodities;
+    return commodities.filter((c) => c.municipality === selectedMuniScope);
+  }, [commodities, selectedMuniScope]);
+
+  const scopedMuniTotalKg = useMemo(
+    () => scopedMuniCommodities.reduce((sum, c) => sum + c.availableKg, 0),
+    [scopedMuniCommodities]
+  );
+
+  const handleCompileMunicipalReport = async () => {
+    setMuniCompilerLoading(true);
+    const invBreakdownList = scopedMuniCommodities
+      .slice(0, 6)
+      .map((c) => `${c.name}: ${c.availableKg.toLocaleString()} kg @ ₱${c.pricePerKg}/kg (${c.supplierName})`);
+
+    try {
+      const res = await fetch('/api/ai/municipal-analytics', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          municipality: selectedMuniScope,
+          accountsSummary: `${scopedMuniAccounts.length} accounts (Farmers: ${scopedMuniAccounts.filter((a) => a.role === 'Farmer').length}, Buyers: ${scopedMuniAccounts.filter((a) => a.role === 'Buyer').length}, Suppliers: ${scopedMuniAccounts.filter((a) => a.role === 'Supplier').length}, Coops: ${scopedMuniAccounts.filter((a) => a.role === 'Cooperative').length})`,
+          inventorySummary: `${scopedMuniCommodities.length} active lots totaling ${scopedMuniTotalKg} kg. Top items: ${invBreakdownList.join('; ')}`,
+          userUid: currentUser?.id || 'gov_01',
+          userRole: currentUser?.role || 'Government',
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setMuniCompiledReport({
+          reportTitle: data.reportTitle || `Municipal Agricultural Report — ${selectedMuniScope}`,
+          executiveSummary: data.executiveSummary || 'Municipal analytics report compiled.',
+          trendAnalysis: Array.isArray(data.trendHighlights)
+            ? data.trendHighlights
+            : Array.isArray(data.trendAnalysis)
+            ? data.trendAnalysis
+            : ['Steady supply inflows and active buyer demand across verified hubs.'],
+          inventoryBreakdown: invBreakdownList,
+          policyRecommendations: Array.isArray(data.policyRecommendations)
+            ? data.policyRecommendations
+            : ['Coordinate municipal hauling trucks for peak morning dispatches to NVAT Bambang.'],
+        });
+        logAiHistory({
+          userId: currentUser?.id || 'gov',
+          userRole: currentUser?.role || 'Government',
+          agentType: 'Admin Agent',
+          prompt: `Compile Municipal Report for ${selectedMuniScope}`,
+          responseSummary: data.executiveSummary || 'Municipal analytics report compiled.',
+          poweredByGemini: Boolean(data.poweredByGemini),
+        });
+        addNotification(`Municipal Analytics Report compiled for ${selectedMuniScope}!`, 'success');
+      }
+    } catch {
+      setMuniCompiledReport({
+        reportTitle: `Municipal Agricultural Report — ${selectedMuniScope}`,
+        executiveSummary: `${scopedMuniAccounts.length} registered accounts and ${scopedMuniCommodities.length} active supply lots (${scopedMuniTotalKg.toLocaleString()} kg) compiled for ${selectedMuniScope}.`,
+        trendAnalysis: [
+          'Highland and lowland vegetable supplies remain steady against eNVAT benchmarks.',
+          'Direct buyer inquiries are concentrated on Grade A verified lots.',
+        ],
+        inventoryBreakdown: scopedMuniCommodities
+          .slice(0, 5)
+          .map((c) => `${c.name}: ${c.availableKg.toLocaleString()} kg @ ₱${c.pricePerKg}/kg (${c.supplierName})`),
+        policyRecommendations: [
+          'Coordinate municipal hauling trucks for peak morning dispatches to NVAT Bambang.',
+        ],
+      });
+    } finally {
+      setMuniCompilerLoading(false);
+    }
+  };
+
   // Unused import guard check
   void aggregateReactions;
   void estimateDeliveryEta;
@@ -480,13 +571,13 @@ export const MultiAgentModule: React.FC = () => {
         <div>
           <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-[#1F4B2C] text-[#C3E956] text-[10px] font-bold uppercase tracking-wider mb-1">
             <Cpu className="w-3.5 h-3.5 text-[#C3E956]" />
-            Role-Guarded 5-Agent Agricultural AI Suite
+            Government & Master Admin AI Analytics Hub
           </div>
-          <h2 className="text-2xl font-black text-[#1F4B2C] tracking-tight">
-            AgriMatch NV Multi-Agent AI Hub
+          <h2 className="text-2xl font-black text-[#1F4B2C] dark:text-white tracking-tight">
+            Municipal AI Agent, Inventory & Trend Compiler
           </h2>
-          <p className="text-xs text-neutral-600 font-medium">
-            Active Role: <span className="font-black text-[#1F4B2C]">{currentUser?.role || 'Guest'}</span> • Select an agent workbench tailored to your stakeholder permissions
+          <p className="text-xs text-neutral-600 dark:text-neutral-300 font-medium">
+            Active Role: <span className="font-black text-[#1F4B2C] dark:text-[#C3E956]">{currentUser?.role || 'Government'}</span> • Inspect municipal accounts, calculate supply trends, and compile analytics reports
           </p>
         </div>
 
@@ -523,6 +614,165 @@ export const MultiAgentModule: React.FC = () => {
             Knowledge Sharing Hub (Live JSON)
           </button>
         </div>
+      </div>
+
+      {/* MUNICIPAL ACCOUNTS, INVENTORY & TREND AI COMPILER (GOVERNMENT & MASTER ADMIN) */}
+      <div className="glass-card rounded-3xl p-5 sm:p-6 border-2 border-[#1F4B2C] dark:border-[#C3E956] bg-gradient-to-br from-[#1F4B2C] to-[#112A19] text-white space-y-5 shadow-xl">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+          <div>
+            <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#C3E956]/20 text-[#C3E956] text-[11px] font-extrabold uppercase">
+              <Sparkles className="w-3.5 h-3.5" />
+              <span>Municipal Accounts, Inventory & Trend Compiler</span>
+            </span>
+            <h3 className="text-xl sm:text-2xl font-black mt-1.5">
+              {selectedMuniScope === 'ALL'
+                ? 'All 15 Nueva Vizcaya Municipalities — Accounts & Supply Analytics'
+                : `${selectedMuniScope} Municipality — Signed-In Accounts & Inventory`}
+            </h3>
+            <p className="text-xs sm:text-sm text-[#91EAAF] mt-0.5">
+              Inspect registered/signed-in accounts in {selectedMuniScope}, calculate crop supply trends, and compile a complete municipal report.
+            </p>
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <select
+              value={selectedMuniScope}
+              onChange={(e) => setSelectedMuniScope(e.target.value)}
+              className="px-3.5 py-2.5 rounded-xl bg-white text-[#1F4B2C] text-xs font-extrabold border border-[#C3E956]"
+            >
+              <option value="ALL">All 15 Municipalities</option>
+              {Object.keys(NV_COORDS_BY_MUNICIPALITY).map((m) => (
+                <option key={m} value={m}>
+                  {m}
+                </option>
+              ))}
+            </select>
+
+            <button
+              type="button"
+              onClick={handleCompileMunicipalReport}
+              disabled={muniCompilerLoading}
+              className="px-4 py-2.5 rounded-xl bg-[#C3E956] hover:bg-[#d5f576] text-[#1F4B2C] text-xs sm:text-sm font-black flex items-center gap-1.5 shadow-md cursor-pointer"
+            >
+              <FileText className="w-4 h-4" />
+              <span>
+                {muniCompilerLoading ? 'Compiling Report...' : 'Compile AI Municipal Report'}
+              </span>
+            </button>
+          </div>
+        </div>
+
+        {/* Municipal KPIs: Accounts Signed In/Registered + Inventory + Lots */}
+        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div className="bg-white/10 rounded-2xl p-3.5 border border-white/15">
+            <span className="text-[11px] font-bold uppercase text-[#C3E956]">
+              Accounts in {selectedMuniScope}
+            </span>
+            <p className="text-2xl font-black text-white mt-0.5">{scopedMuniAccounts.length}</p>
+            <p className="text-[11px] text-[#91EAAF]">
+              Farmers, Buyers, Suppliers & Coops
+            </p>
+          </div>
+          <div className="bg-white/10 rounded-2xl p-3.5 border border-white/15">
+            <span className="text-[11px] font-bold uppercase text-[#C3E956]">
+              Total Inventory (kg)
+            </span>
+            <p className="text-2xl font-black text-white mt-0.5">
+              {scopedMuniTotalKg.toLocaleString()} kg
+            </p>
+            <p className="text-[11px] text-[#91EAAF]">
+              {scopedMuniCommodities.length} active crop lots
+            </p>
+          </div>
+          <div className="bg-white/10 rounded-2xl p-3.5 border border-white/15">
+            <span className="text-[11px] font-bold uppercase text-[#C3E956]">
+              Producers vs Buyers
+            </span>
+            <p className="text-2xl font-black text-white mt-0.5">
+              {scopedMuniAccounts.filter((a) => a.role === 'Farmer' || a.role === 'Supplier').length}{' '}
+              / {scopedMuniAccounts.filter((a) => a.role === 'Buyer').length}
+            </p>
+            <p className="text-[11px] text-[#91EAAF]">Active trade ratio</p>
+          </div>
+          <div className="bg-white/10 rounded-2xl p-3.5 border border-white/15">
+            <span className="text-[11px] font-bold uppercase text-[#C3E956]">
+              Est. Municipal Value
+            </span>
+            <p className="text-2xl font-black text-white mt-0.5">
+              ₱
+              {scopedMuniCommodities
+                .reduce((s, c) => s + c.availableKg * c.pricePerKg, 0)
+                .toLocaleString()}
+            </p>
+            <p className="text-[11px] text-[#91EAAF]">Based on prevailing rates</p>
+          </div>
+        </div>
+
+        {/* Accounts List in Selected Municipality */}
+        <div className="bg-black/25 rounded-2xl p-4 border border-white/10">
+          <p className="text-xs font-extrabold uppercase text-[#C3E956] mb-2.5">
+            Accounts Signed In & Registered in {selectedMuniScope} ({scopedMuniAccounts.length})
+          </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2.5 max-h-48 overflow-y-auto pr-1">
+            {scopedMuniAccounts.map((acc) => (
+              <div
+                key={acc.id}
+                className="p-2.5 rounded-xl bg-white/10 border border-white/10 flex items-center justify-between gap-2 text-xs"
+              >
+                <div className="min-w-0">
+                  <p className="font-extrabold text-white truncate">{acc.name}</p>
+                  <p className="text-[11px] text-[#91EAAF] truncate">
+                    {acc.role} • {acc.barangay}, {acc.municipality}
+                  </p>
+                </div>
+                <span className="px-2 py-0.5 rounded bg-[#C3E956] text-[#1F4B2C] text-[10px] font-black shrink-0">
+                  {acc.status}
+                </span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Compiled AI Report Output */}
+        {muniCompiledReport && (
+          <div className="bg-white text-[#1F4B2C] rounded-2xl p-5 border-2 border-[#C3E956] space-y-3">
+            <div className="flex items-center justify-between gap-2 border-b border-neutral-200 pb-2">
+              <h4 className="text-base sm:text-lg font-black">{muniCompiledReport.reportTitle}</h4>
+              <span className="px-2.5 py-0.5 rounded-full bg-[#1F4B2C] text-[#C3E956] text-[10px] font-black uppercase">
+                Compiled Report
+              </span>
+            </div>
+            <p className="text-xs sm:text-sm font-bold text-neutral-800">
+              {muniCompiledReport.executiveSummary}
+            </p>
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3 text-xs">
+              <div className="p-3 rounded-xl bg-[#F4FFFC] border border-[#91EAAF]">
+                <p className="font-black uppercase text-[#4D7111] mb-1">Trend Analysis</p>
+                <ul className="space-y-1 list-disc list-inside text-neutral-700 font-medium">
+                  {muniCompiledReport.trendAnalysis.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="p-3 rounded-xl bg-[#F4FFFC] border border-[#91EAAF]">
+                <p className="font-black uppercase text-[#4D7111] mb-1">Inventory Breakdown</p>
+                <ul className="space-y-1 list-disc list-inside text-neutral-700 font-medium">
+                  {muniCompiledReport.inventoryBreakdown.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+              <div className="p-3 rounded-xl bg-[#F4FFFC] border border-[#91EAAF]">
+                <p className="font-black uppercase text-[#4D7111] mb-1">Recommendations</p>
+                <ul className="space-y-1 list-disc list-inside text-neutral-700 font-medium">
+                  {muniCompiledReport.policyRecommendations.map((t, i) => (
+                    <li key={i}>{t}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Mandatory Governance Notice */}

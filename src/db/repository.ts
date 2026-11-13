@@ -446,6 +446,17 @@ export async function listDatabaseOverview() {
   if (!isSqlConfigured()) {
     return {
       sqlConnected: false,
+      configured: false,
+      counts: {
+        users: 0,
+        commodities: 0,
+        communityPosts: 0,
+        orders: 0,
+        privateMessages: 0,
+        aiHistory: 0,
+        nvatBulletins: 0,
+        pendingReports: 0,
+      },
       users: [],
       commodities: [],
       communityPosts: [],
@@ -467,18 +478,29 @@ export async function listDatabaseOverview() {
       bulletinsRows,
       reportsRows,
     ] = await Promise.all([
-      db.select().from(users).limit(100),
-      db.select().from(commodities).limit(100),
-      db.select().from(communityPosts).orderBy(desc(communityPosts.createdAt)).limit(100),
-      db.select().from(orders).orderBy(desc(orders.createdAt)).limit(100),
-      db.select().from(privateMessages).orderBy(desc(privateMessages.createdAt)).limit(200),
-      db.select().from(aiHistory).orderBy(desc(aiHistory.createdAt)).limit(100),
-      db.select().from(nvatBulletins).orderBy(desc(nvatBulletins.processedAt)).limit(50),
-      db.select().from(moderationReports).orderBy(desc(moderationReports.createdAt)).limit(100),
+      db.select().from(users).orderBy(desc(users.updatedAt)).limit(1000),
+      db.select().from(commodities).orderBy(desc(commodities.postedAt)).limit(4000),
+      db.select().from(communityPosts).orderBy(desc(communityPosts.createdAt)).limit(250),
+      db.select().from(orders).orderBy(desc(orders.createdAt)).limit(500),
+      db.select().from(privateMessages).orderBy(desc(privateMessages.createdAt)).limit(500),
+      db.select().from(aiHistory).orderBy(desc(aiHistory.createdAt)).limit(250),
+      db.select().from(nvatBulletins).orderBy(desc(nvatBulletins.processedAt)).limit(100),
+      db.select().from(moderationReports).orderBy(desc(moderationReports.createdAt)).limit(200),
     ]);
 
     return {
       sqlConnected: true,
+      configured: true,
+      counts: {
+        users: usersRows.length,
+        commodities: commoditiesRows.length,
+        communityPosts: postsRows.length,
+        orders: ordersRows.length,
+        privateMessages: messagesRows.length,
+        aiHistory: aiRows.length,
+        nvatBulletins: bulletinsRows.length,
+        pendingReports: reportsRows.filter((r) => r.status === 'PENDING').length,
+      },
       users: usersRows,
       commodities: commoditiesRows,
       communityPosts: postsRows,
@@ -492,6 +514,17 @@ export async function listDatabaseOverview() {
     console.warn('listDatabaseOverview SQL warning:', error);
     return {
       sqlConnected: false,
+      configured: false,
+      counts: {
+        users: 0,
+        commodities: 0,
+        communityPosts: 0,
+        orders: 0,
+        privateMessages: 0,
+        aiHistory: 0,
+        nvatBulletins: 0,
+        pendingReports: 0,
+      },
       users: [],
       commodities: [],
       communityPosts: [],
@@ -503,3 +536,4 @@ export async function listDatabaseOverview() {
     };
   }
 }
+

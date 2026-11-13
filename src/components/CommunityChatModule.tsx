@@ -446,6 +446,20 @@ export const CommunityChatModule: React.FC = () => {
                       </div>
                     )}
 
+                    {post.externalArticleUrl && (
+                      <a
+                        href={post.externalArticleUrl}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="p-3 rounded-2xl bg-[#1F4B2C] text-[#C3E956] text-xs font-extrabold flex items-center justify-between gap-2 hover:bg-[#296139] transition-colors"
+                      >
+                        <span>
+                          Read Official Full Article on {post.externalSourceName || 'da.gov.ph'}
+                        </span>
+                        <ExternalLink className="w-4 h-4 shrink-0" />
+                      </a>
+                    )}
+
                     {/* Multi-Reaction Summary & Comments Count */}
                     <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-neutral-500 pt-2 border-t border-neutral-100">
                       <div className="flex flex-wrap items-center gap-1.5">

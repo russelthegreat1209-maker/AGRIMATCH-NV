@@ -93,9 +93,11 @@ export interface CommunityPost {
   authorRole: StakeholderRole;
   authorAvatar: string;
   authorMunicipality: string;
-  category: 'Update' | 'Concern' | 'Harvest News' | 'Price Advisory' | 'Question';
+  category: 'Update' | 'Concern' | 'Harvest News' | 'Price Advisory' | 'Question' | 'Price Alert';
   content: string;
   imageUrl?: string;
+  externalArticleUrl?: string;
+  externalSourceName?: string;
   timestamp: string;
   likes: string[]; // List of user IDs who liked
   reactions?: PostReactions;
@@ -347,5 +349,55 @@ export interface SystemCounters {
   suppliersCount: number;
   buyersCount: number;
   cooperativesCount: number;
-  govAdminCount: number;
+  govAdminCount?: number;
+  loggedInByRole?: {
+    farmers: number;
+    buyers: number;
+    suppliers: number;
+    cooperatives: number;
+    government: number;
+    admin: number;
+  };
 }
+
+export interface DaNewsArticle {
+  id: string;
+  title: string;
+  summary: string;
+  excerpt?: string;
+  imageUrl: string;
+  url: string;
+  publishedAt: string;
+  category: string;
+  source: string;
+}
+
+export interface ProducerSupplySummary {
+  supplierId: string;
+  supplierName: string;
+  supplierRole: string;
+  municipality: string;
+  totalListings: number;
+  totalInventoryKg: number;
+  estimatedValuePhp: number;
+  crops: Array<{
+    id: string;
+    name: string;
+    category: CropCategory;
+    availableKg: number;
+    pricePerKg: number;
+    verificationStatus: 'VERIFIED' | 'PENDING' | 'REJECTED';
+    demandSignal: 'HIGH_DEMAND' | 'STEADY' | 'SURPLUS';
+  }>;
+}
+
+export type AgribeeVideoId =
+  | 'welcome'
+  | 'register-guide'
+  | 'congrats-dashboard'
+  | 'market-guide'
+  | 'inventory-monitoring'
+  | 'messages-orders'
+  | 'gis-map';
+
+

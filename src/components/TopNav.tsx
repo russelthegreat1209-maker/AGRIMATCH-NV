@@ -2,7 +2,6 @@ import React, { useState, useRef, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import { LANGUAGE_OPTIONS, LanguageCode } from '../i18n/translations';
 import {
-  Users,
   Bell,
   LogOut,
   LogIn,
@@ -11,18 +10,20 @@ import {
   Info,
   Globe,
   Check,
-  Cpu,
+  Menu,
+  Sun,
+  Moon,
+  Video,
+  Radio,
 } from 'lucide-react';
 import { UserAvatar } from './UserAvatar';
 
 export const TopNav: React.FC = () => {
   const {
-    environmentMode,
-    setEnvironmentMode,
     currentUser,
+    activeTab,
     logout,
     setIsOnboardingOpen,
-    setIsDemoSwitcherOpen,
     setIsPagasaModalOpen,
     switchDemoRole,
     recentNotifications,
@@ -30,6 +31,10 @@ export const TopNav: React.FC = () => {
     language,
     setLanguage,
     t,
+    themeMode,
+    toggleThemeMode,
+    setIsMobileSidebarOpen,
+    setActiveAgribeeVideo,
   } = useApp();
 
   const [showNotifDropdown, setShowNotifDropdown] = useState(false);
@@ -46,212 +51,175 @@ export const TopNav: React.FC = () => {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  const currentLangOption = LANGUAGE_OPTIONS.find((opt) => opt.code === language) || LANGUAGE_OPTIONS[0];
+  // On the public landing page, PublicLandingScreen renders its own clean header
+  if (activeTab === 'public-landing') {
+    return null;
+  }
+
+  const currentLangOption =
+    LANGUAGE_OPTIONS.find((opt) => opt.code === language) || LANGUAGE_OPTIONS[0];
 
   return (
     <header className="sticky top-0 z-40 w-full glass-light border-b border-[#91EAAF]/60 shadow-xs backdrop-blur-md">
-      <div className="max-w-7xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
-        {/* Brand Logo & Name */}
-        <div
-          className="flex items-center gap-2.5 cursor-pointer select-none group shrink-0"
-          onClick={() => navigateToTabWithGuard('dashboard')}
-        >
-          <div className="relative w-10 h-10 rounded-full bg-white p-0.5 border-2 border-[#91EAAF] shadow-xs group-hover:scale-105 transition-transform">
-            <img
-              src="/assets/aistudio/file_000000000e5c8209a20727869a247797_07ecb429.jpg"
-              alt="AGRIMATCH Emblem"
-              className="w-full h-full object-contain rounded-full"
-            />
-            <span className="absolute -bottom-0.5 -right-0.5 w-3 h-3 bg-[#C3E956] border-2 border-white rounded-full animate-pulse" />
-          </div>
-          <div>
-            <div className="flex items-center gap-1.5">
-              <span className="text-lg font-black tracking-tight text-[#1F4B2C]">AGRIMATCH</span>
-              <span className="text-xs font-black px-1.5 py-0.5 rounded-sm bg-[#4D7111] text-[#F4FFFC]">
-                NV
-              </span>
+      <div className="w-full px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
+        {/* Left: Mobile Sidebar Toggle + Brand Logo */}
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            type="button"
+            onClick={() => setIsMobileSidebarOpen(true)}
+            className="lg:hidden p-2 rounded-xl bg-white/80 dark:bg-white/10 border border-[#91EAAF] text-[#1F4B2C] dark:text-[#C3E956]"
+            aria-label="Open left navigation menu"
+          >
+            <Menu className="w-5 h-5" />
+          </button>
+
+          <div
+            className="flex items-center gap-2.5 cursor-pointer select-none group"
+            onClick={() => navigateToTabWithGuard('dashboard')}
+          >
+            <div className="relative w-9 h-9 rounded-xl bg-white p-0.5 border-2 border-[#91EAAF] shadow-xs group-hover:scale-105 transition-transform">
+              <img
+                src="/assets/aistudio/file_000000000e5c8209a20727869a247797_07ecb429.jpg"
+                alt="AgriMatch NV"
+                className="w-full h-full object-contain rounded-lg"
+              />
             </div>
-            <p className="hidden md:block text-[10px] text-neutral-500 font-medium tracking-tight">
-              {t.brandSubtitle}
-            </p>
+            <div>
+              <div className="flex items-center gap-1.5">
+                <span className="text-base sm:text-lg font-black tracking-tight text-[#1F4B2C] dark:text-white">
+                  AgriMatch NV
+                </span>
+              </div>
+              <p className="hidden md:block text-[10px] text-neutral-500 dark:text-neutral-300 font-semibold">
+                Nueva Vizcaya Direct Agricultural Platform
+              </p>
+            </div>
           </div>
         </div>
 
-        {/* Center: Persistent Environment Indicator Badge & Quick Switchers */}
+        {/* Center Quick Tools: Stakeholder Role Switcher (non-admin) + PAGASA Weather + Video Guide */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Role Switcher Dropdown */}
-          <div className="hidden xl:flex items-center gap-1 bg-white px-2.5 py-1 rounded-full border border-[#91EAAF] shadow-xs">
-            <span className="text-[10px] font-bold text-[#4D7111] uppercase tracking-wider">
-              {t.demoRole}
-            </span>
-            <select
-              value={currentUser?.role || 'Farmer'}
-              onChange={(e) => switchDemoRole(e.target.value as any)}
-              className="bg-transparent text-xs font-black text-[#1F4B2C] focus:outline-none cursor-pointer pr-1"
-              aria-label="Switch Role"
-            >
-              <option value="Farmer">Farmer</option>
-              <option value="Supplier">Supplier / Trader</option>
-              <option value="Cooperative">Cooperative</option>
-              <option value="Buyer">Wholesale Buyer</option>
-              <option value="MASTER_ADMIN">Master Admin</option>
-            </select>
-          </div>
+          {currentUser && currentUser.role !== 'MASTER_ADMIN' && (
+            <div className="hidden md:flex items-center gap-1.5 bg-white/90 dark:bg-black/30 px-3 py-1.5 rounded-xl border border-[#91EAAF] shadow-xs">
+              <span className="text-[10px] font-extrabold text-[#4D7111] dark:text-[#C3E956] uppercase">
+                Role:
+              </span>
+              <select
+                value={currentUser.role}
+                onChange={(e) => switchDemoRole(e.target.value as any)}
+                className="bg-transparent text-xs font-black text-[#1F4B2C] dark:text-white focus:outline-none cursor-pointer"
+                aria-label="Switch Stakeholder Role"
+              >
+                <option value="Farmer">Farmer</option>
+                <option value="Buyer">Buyer</option>
+                <option value="Supplier">Supplier</option>
+                <option value="Cooperative">Cooperative</option>
+                <option value="Government">Government / DA</option>
+              </select>
+            </div>
+          )}
 
-          {/* Public Portal Switcher */}
           <button
-            onClick={() => navigateToTabWithGuard('public-landing')}
-            className="hidden md:inline-flex items-center gap-1 px-3 py-1 rounded-full bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-xs font-bold text-[#1F4B2C] transition-colors"
-            title="Return to Public Portal"
-          >
-            <span>{t.publicPortal}</span>
-          </button>
-
-          {/* Agents Quick Access Button */}
-          <button
-            onClick={() => navigateToTabWithGuard('decision-support')}
-            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1F4B2C] text-[#C3E956] hover:bg-[#2d6a3e] text-xs font-black shadow-xs transition-colors"
-            title="Open AI Agents Hub"
-            aria-label="Open Agents Hub"
-          >
-            <Cpu className="w-3.5 h-3.5" />
-            <span>Agents</span>
-          </button>
-
-          {/* Tap to Check Live PAGASA Weather Feed Button */}
-          <button
+            type="button"
             onClick={() => setIsPagasaModalOpen(true)}
-            className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 hover:bg-blue-100 transition-colors shadow-xs"
-            title="Check Official Live PAGASA Weather Feed"
-            aria-label="Open PAGASA Weather Telemetry"
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-blue-50 border border-blue-200 text-xs font-bold text-blue-900 hover:bg-blue-100 transition-colors cursor-pointer"
           >
-            <span className="w-2 h-2 rounded-full bg-blue-600 animate-pulse" />
-            <span>{t.pagasaRadar}</span>
+            <Radio className="w-3.5 h-3.5 text-blue-600 animate-pulse" />
+            <span>Weather</span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setActiveAgribeeVideo('congrats-dashboard')}
+            className="hidden sm:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#C3E956]/35 border border-[#91EAAF] text-xs font-extrabold text-[#1F4B2C] dark:text-[#C3E956] hover:bg-[#C3E956]/55 transition-colors cursor-pointer"
+          >
+            <Video className="w-3.5 h-3.5" />
+            <span>Video Guides</span>
           </button>
         </div>
 
-        {/* Right Actions: Language Switcher + Demo Switcher + Notifications + User / Guest */}
+        {/* Right Actions: Light/Dark Mode + Language + Notifications + User */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Simple Language & Dialect Switcher */}
+          {/* Light / Dark Mode Toggle */}
+          <button
+            type="button"
+            onClick={toggleThemeMode}
+            className="p-2 rounded-xl bg-white/90 dark:bg-white/10 border border-[#91EAAF] text-[#1F4B2C] dark:text-[#C3E956] hover:scale-105 transition-all cursor-pointer"
+            title={themeMode === 'dark' ? 'Switch to Light Mode' : 'Switch to Dark Mode'}
+          >
+            {themeMode === 'dark' ? (
+              <Sun className="w-4 h-4 text-[#C3E956]" />
+            ) : (
+              <Moon className="w-4 h-4 text-[#1F4B2C]" />
+            )}
+          </button>
+
+          {/* Language Switcher */}
           <div className="relative" ref={langDropdownRef}>
             <button
+              type="button"
               onClick={() => setShowLangDropdown((prev) => !prev)}
-              className="inline-flex items-center gap-1.5 px-2.5 py-1.5 rounded-full bg-white hover:bg-[#F4FFFC] border border-[#91EAAF] text-xs font-bold text-[#1F4B2C] shadow-xs transition-colors min-h-[34px]"
-              aria-label="Switch UI Language or Dialect"
-              title="Switch Language: English, Tagalog, Ilocano, Gaddang"
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-white/90 dark:bg-white/10 border border-[#91EAAF] text-xs font-bold text-[#1F4B2C] dark:text-white cursor-pointer"
             >
-              <Globe className="w-3.5 h-3.5 text-[#4D7111] shrink-0" />
-              <span className="uppercase font-mono text-[11px] font-black">{currentLangOption.code}</span>
-              <span className="hidden sm:inline text-[11px] font-bold">{currentLangOption.label}</span>
-              <ChevronDown className="w-3 h-3 text-[#4D7111]" />
+              <Globe className="w-3.5 h-3.5 text-[#4D7111] dark:text-[#C3E956]" />
+              <span className="uppercase font-mono text-[11px] font-black">
+                {currentLangOption.code}
+              </span>
+              <ChevronDown className="w-3 h-3" />
             </button>
 
             {showLangDropdown && (
-              <div className="absolute right-0 mt-2 w-56 glass-light rounded-2xl shadow-xl border border-[#91EAAF] p-2 z-50 animate-fade-in">
-                <div className="px-2.5 py-1.5 border-b border-neutral-200 mb-1 flex items-center justify-between">
-                  <span className="text-[10px] font-black uppercase tracking-wider text-neutral-500">
-                    Language / Dialect
-                  </span>
-                  <span className="text-[10px] font-bold text-[#4D7111]">NV Local</span>
-                </div>
-                <div className="space-y-1">
-                  {LANGUAGE_OPTIONS.map((opt) => {
-                    const isSelected = language === opt.code;
-                    return (
-                      <button
-                        key={opt.code}
-                        onClick={() => {
-                          setLanguage(opt.code as LanguageCode);
-                          setShowLangDropdown(false);
-                        }}
-                        className={`w-full flex items-center justify-between px-2.5 py-2 rounded-xl text-left text-xs transition-colors ${
-                          isSelected
-                            ? 'bg-[#1F4B2C] text-[#F4FFFC] font-bold'
-                            : 'hover:bg-neutral-100 text-[#1F4B2C] font-medium'
-                        }`}
-                      >
-                        <div>
-                          <div className="flex items-center gap-1.5">
-                            <span className="font-bold">{opt.label}</span>
-                            <span
-                              className={`text-[9px] px-1.5 py-0.5 rounded-full font-semibold ${
-                                isSelected
-                                  ? 'bg-[#C3E956] text-[#1F4B2C]'
-                                  : 'bg-neutral-100 text-neutral-500'
-                              }`}
-                            >
-                              {opt.regionTag}
-                            </span>
-                          </div>
-                          <span
-                            className={`text-[10px] block ${
-                              isSelected ? 'text-[#91EAAF]' : 'text-neutral-400'
-                            }`}
-                          >
-                            {opt.nativeName}
-                          </span>
-                        </div>
-                        {isSelected && <Check className="w-3.5 h-3.5 text-[#C3E956] shrink-0" />}
-                      </button>
-                    );
-                  })}
-                </div>
+              <div className="absolute right-0 mt-2 w-52 glass-light rounded-2xl shadow-xl border border-[#91EAAF] p-2 z-50">
+                {LANGUAGE_OPTIONS.map((opt) => {
+                  const isSelected = language === opt.code;
+                  return (
+                    <button
+                      key={opt.code}
+                      type="button"
+                      onClick={() => {
+                        setLanguage(opt.code as LanguageCode);
+                        setShowLangDropdown(false);
+                      }}
+                      className={`w-full flex items-center justify-between px-3 py-2 rounded-xl text-left text-xs transition-colors cursor-pointer ${
+                        isSelected
+                          ? 'bg-[#1F4B2C] text-[#C3E956] font-bold'
+                          : 'hover:bg-neutral-100 text-[#1F4B2C] dark:text-white font-medium'
+                      }`}
+                    >
+                      <span>{opt.label}</span>
+                      {isSelected && <Check className="w-3.5 h-3.5" />}
+                    </button>
+                  );
+                })}
               </div>
             )}
           </div>
 
-          {/* Replay Agri Bee Guide Trigger */}
-          <button
-            onClick={() => setIsOnboardingOpen(true)}
-            className="hidden sm:inline-flex items-center gap-1 px-2.5 py-1 rounded-full bg-[#C3E956]/20 border border-[#91EAAF] text-xs font-bold text-[#1F4B2C] hover:bg-[#C3E956]/40 transition-colors"
-            title="Open Agri Bee Guide & Authentication"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-[#4D7111]" />
-            <span className="text-[11px]">{t.agriBee}</span>
-          </button>
-
-          {/* Quick Demo Login Switcher */}
-          {environmentMode === 'demo' && (
-            <button
-              onClick={() => setIsDemoSwitcherOpen(true)}
-              className="hidden lg:inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#C3E956]/20 border border-[#91EAAF] text-xs font-bold text-[#1F4B2C] hover:bg-[#C3E956]/40 transition-colors"
-              title="Switch between pre-loaded stakeholder accounts"
-              aria-label="Open Demo Account Switcher"
-            >
-              <Users className="w-3.5 h-3.5 text-[#4D7111]" />
-              <span>{t.accounts25}</span>
-              <ChevronDown className="w-3 h-3 text-[#4D7111]" />
-            </button>
-          )}
-
-          {/* Notifications Dropdown */}
+          {/* Notifications */}
           <div className="relative">
             <button
+              type="button"
               onClick={() => setShowNotifDropdown(!showNotifDropdown)}
-              className="p-2 rounded-full hover:bg-neutral-100 text-neutral-700 relative border border-transparent hover:border-[#91EAAF]/50 transition-colors"
+              className="p-2 rounded-xl bg-white/90 dark:bg-white/10 border border-[#91EAAF] text-[#1F4B2C] dark:text-white relative cursor-pointer"
               aria-label="Notifications"
             >
-              <Bell className="w-4 h-4 text-[#1F4B2C]" />
-              <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500 animate-ping" />
+              <Bell className="w-4 h-4" />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 rounded-full bg-red-500" />
             </button>
 
             {showNotifDropdown && (
               <div className="absolute right-0 mt-2 w-80 glass-light rounded-2xl shadow-xl border border-[#91EAAF] p-3 z-50">
                 <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
-                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#1F4B2C]">
+                  <div className="flex items-center gap-1.5 text-xs font-bold text-[#1F4B2C] dark:text-white">
                     <Sparkles className="w-3.5 h-3.5 text-[#4D7111]" />
-                    {t.notificationsTitle}
+                    <span>{t.notificationsTitle}</span>
                   </div>
-                  <span className="text-[10px] bg-[#91EAAF]/40 text-[#1F4B2C] font-semibold px-2 py-0.5 rounded-full">
-                    Live
-                  </span>
                 </div>
                 <div className="mt-2 space-y-2 max-h-60 overflow-y-auto">
                   {recentNotifications.map((notif) => (
                     <div
                       key={notif.id}
-                      className="p-2 rounded-xl bg-white/70 border border-neutral-100 text-xs text-[#1F4B2C] flex items-start gap-2"
+                      className="p-2 rounded-xl bg-white/80 dark:bg-black/30 border border-neutral-100 dark:border-white/10 text-xs text-[#1F4B2C] dark:text-white flex items-start gap-2"
                     >
                       <Info className="w-3.5 h-3.5 text-[#4D7111] shrink-0 mt-0.5" />
                       <div>
@@ -265,12 +233,17 @@ export const TopNav: React.FC = () => {
             )}
           </div>
 
-          {/* User Account Pill or Guest Sign-In */}
+          {/* User Profile Pill */}
           {currentUser ? (
-            <div className="flex items-center gap-1.5 pl-1">
-              <div
-                onClick={() => navigateToTabWithGuard(currentUser.role === 'MASTER_ADMIN' ? 'admin' : 'profile')}
-                className="flex items-center gap-2 px-2 py-1 rounded-full bg-white/90 border border-[#91EAAF] cursor-pointer hover:shadow-xs transition-shadow"
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() =>
+                  navigateToTabWithGuard(
+                    currentUser.role === 'MASTER_ADMIN' ? 'admin' : 'profile'
+                  )
+                }
+                className="flex items-center gap-2 px-2.5 py-1 rounded-xl bg-white/90 dark:bg-white/10 border border-[#91EAAF] cursor-pointer"
               >
                 <UserAvatar
                   name={currentUser.name}
@@ -278,54 +251,35 @@ export const TopNav: React.FC = () => {
                   role={currentUser.role}
                   sizeClass="w-7 h-7"
                   textSizeClass="text-[10px]"
-                  className="border border-[#91EAAF]"
                 />
-                <div className="text-left hidden lg:block">
-                  <div className="text-xs font-bold text-[#1F4B2C] max-w-[110px] truncate leading-tight">
+                <div className="text-left hidden sm:block">
+                  <div className="text-xs font-bold text-[#1F4B2C] dark:text-white max-w-[110px] truncate leading-tight">
                     {currentUser.name}
                   </div>
-                  <div className="flex items-center gap-1">
-                    <span
-                      className={`text-[9px] font-black uppercase tracking-wider px-1.5 py-0.2 rounded-full ${
-                        currentUser.role === 'MASTER_ADMIN'
-                          ? 'bg-red-100 text-red-800 font-extrabold'
-                          : currentUser.role === 'Farmer'
-                          ? 'bg-[#C3E956]/40 text-[#1F4B2C]'
-                          : currentUser.role === 'Supplier'
-                          ? 'bg-amber-100 text-amber-900'
-                          : currentUser.role === 'Buyer'
-                          ? 'bg-blue-100 text-blue-900'
-                          : currentUser.role === 'Cooperative'
-                          ? 'bg-emerald-100 text-emerald-900'
-                          : 'bg-purple-100 text-purple-900'
-                      }`}
-                    >
-                      {currentUser.role === 'MASTER_ADMIN' ? 'Master Admin' : currentUser.role}
-                    </span>
+                  <div className="text-[9px] font-extrabold uppercase text-[#4D7111] dark:text-[#C3E956]">
+                    {currentUser.role}
                   </div>
                 </div>
-              </div>
+              </button>
 
-              {/* Logout button */}
               <button
+                type="button"
                 onClick={logout}
-                className="p-1.5 rounded-full hover:bg-red-50 text-neutral-500 hover:text-red-600 transition-colors"
-                title={t.signOut}
-                aria-label={t.signOut}
+                className="p-2 rounded-xl hover:bg-red-500/15 text-red-700 dark:text-red-400 transition-colors cursor-pointer"
+                title="Log Out"
               >
                 <LogOut className="w-4 h-4" />
               </button>
             </div>
           ) : (
-            <div className="flex items-center gap-1.5">
-              <button
-                onClick={() => setIsOnboardingOpen(true)}
-                className="px-3 py-1.5 rounded-full btn-sprout text-xs flex items-center gap-1 shadow-xs"
-              >
-                <LogIn className="w-3.5 h-3.5" />
-                <span>{t.signInJoin}</span>
-              </button>
-            </div>
+            <button
+              type="button"
+              onClick={() => setIsOnboardingOpen(true)}
+              className="px-3.5 py-1.5 rounded-xl btn-sprout text-xs font-black flex items-center gap-1 cursor-pointer"
+            >
+              <LogIn className="w-3.5 h-3.5" />
+              <span>Log In</span>
+            </button>
           )}
         </div>
       </div>
