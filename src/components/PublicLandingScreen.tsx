@@ -826,10 +826,14 @@ export const PublicLandingScreen: React.FC = () => {
 
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           <div className="rounded-3xl bg-white border-2 border-[#91EAAF] shadow-xl overflow-hidden flex flex-col">
-            <img
-              src="/assets/aistudio/Modern_Putih_dan_Kuning_Perkenalan_Anggota_Mahasiswa_Kuliah_Kerja_Nyata_Ins_20261113_100657_0000_27651e95.png"
-              alt="Russel Gurat — Researcher and Developer"
-              className="w-full h-auto object-cover"
+            <video
+              src="/assets/aistudio/Modern_Putih_dan_Kuning_Perkenalan_Anggota_Mahasiswa_Kuliah_Kerja_Nyata_Ins_20261113_112832_0001_c4eb0a71.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+              controls
+              className="w-full aspect-video object-cover bg-black"
             />
             <div className="p-5 flex items-center justify-between gap-3 border-t border-neutral-100">
               <div className="flex items-center gap-3">
@@ -851,16 +855,20 @@ export const PublicLandingScreen: React.FC = () => {
           </div>
 
           <div className="rounded-3xl bg-white border-2 border-[#91EAAF] shadow-xl overflow-hidden flex flex-col">
-            <img
-              src="/assets/aistudio/Modern_Putih_dan_Kuning_Perkenalan_Anggota_Mahasiswa_Kuliah_Kerja_Nyata_Ins_20261113_100746_0000_c3315e93.png"
-              alt="Research Coaches — Mark Anthony C. Malubag and Marc Andrei E. Basco"
-              className="w-full h-auto object-cover"
+            <video
+              src="/assets/aistudio/Modern_Putih_dan_Kuning_Perkenalan_Anggota_Mahasiswa_Kuliah_Kerja_Nyata_Ins_20261113_112849_0002_7d81d822.mp4"
+              autoPlay
+              muted
+              loop
+              playsInline
+              controls
+              className="w-full aspect-video object-cover bg-black"
             />
             <div className="p-5 flex items-center justify-between gap-3 border-t border-neutral-100">
               <div>
                 <h3 className="text-base font-black text-[#1F4B2C]">Advisory & Research Coaches</h3>
                 <p className="text-xs font-bold text-[#4D7111]">
-                  Mark Anthony C. Malubag & Marc Andrei E. Basco
+                  Marizza Versola, Maricris Valdez, Fe B. Tabago
                 </p>
               </div>
               <span className="px-3 py-1 rounded-full bg-[#C3E956]/50 text-[#1F4B2C] text-[10px] font-black uppercase">

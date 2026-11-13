@@ -2,26 +2,28 @@
   "entities": {
     "UserProfile": {
       "title": "UserProfile",
-      "description": "User profile with customizable avatar and cover photos",
+      "description": "User profile with customizable avatar, cover photo, strike count, and role",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
         "email": { "type": "string" },
         "name": { "type": "string" },
         "role": { "type": "string" },
-        "avatarUrl": { "type": "string" },
-        "coverPhotoUrl": { "type": "string" },
+        "avatar": { "type": "string" },
+        "coverPhoto": { "type": "string" },
         "municipality": { "type": "string" },
         "barangay": { "type": "string" },
         "phone": { "type": "string" },
         "bio": { "type": "string" },
+        "strikeCount": { "type": "number" },
+        "status": { "type": "string" },
         "createdAt": { "type": "string" }
       },
       "required": ["id", "email", "name", "role"]
     },
     "LiveCommodity": {
       "title": "LiveCommodity",
-      "description": "Real agricultural commodities posted in live production mode",
+      "description": "Agricultural commodities posted with AI quality classification and verification status",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -34,7 +36,8 @@
         "availableKg": { "type": "number" },
         "pricePerKg": { "type": "number" },
         "farmgatePricePhp": { "type": "number" },
-        "contactPhone": { "type": "string" },
+        "qualityGrade": { "type": "string" },
+        "aiSuggestedGrade": { "type": "string" },
         "verificationStatus": { "type": "string" },
         "imageUrl": { "type": "string" },
         "createdAt": { "type": "string" }
@@ -43,7 +46,7 @@
     },
     "LiveCommunityPost": {
       "title": "LiveCommunityPost",
-      "description": "Social feed updates and concerns with comments and likes",
+      "description": "Social feed updates and concerns with multi-reactions (heart, wow, sad, care, angry) and comments",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
@@ -55,27 +58,63 @@
         "content": { "type": "string" },
         "category": { "type": "string" },
         "imageUrl": { "type": "string" },
-        "likesCount": { "type": "number" },
-        "commentsCount": { "type": "number" },
+        "likes": { "type": "array" },
+        "reactions": { "type": "object" },
+        "comments": { "type": "array" },
         "createdAt": { "type": "string" }
       },
-      "required": ["id", "authorId", "authorName", "content", "createdAt"]
+      "required": ["id", "authorId", "authorName", "content"]
     },
-    "LivePostComment": {
-      "title": "LivePostComment",
-      "description": "Comments on social community posts",
+    "NvatBulletinDoc": {
+      "title": "NvatBulletinDoc",
+      "description": "Daily NVAT commodity price updates processed by Admin AI with optional Google Sheet link",
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "postId": { "type": "string" },
-        "authorId": { "type": "string" },
-        "authorName": { "type": "string" },
-        "authorRole": { "type": "string" },
-        "authorAvatar": { "type": "string" },
-        "text": { "type": "string" },
+        "date": { "type": "string" },
+        "rawText": { "type": "string" },
+        "items": { "type": "array" },
+        "executiveSummary": { "type": "array" },
+        "googleSheetUrl": { "type": "string" },
+        "processedAt": { "type": "string" }
+      },
+      "required": ["id", "date", "items", "processedAt"]
+    },
+    "AiHistoryEntry": {
+      "title": "AiHistoryEntry",
+      "description": "Recorded prompts and responses from Farmer, Buyer, Supplier, Market, and Admin AI agents",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "userId": { "type": "string" },
+        "userRole": { "type": "string" },
+        "agentType": { "type": "string" },
+        "prompt": { "type": "string" },
+        "responseSummary": { "type": "string" },
+        "poweredByGemini": { "type": "boolean" },
         "createdAt": { "type": "string" }
       },
-      "required": ["id", "postId", "authorId", "authorName", "text", "createdAt"]
+      "required": ["id", "userId", "agentType", "prompt", "responseSummary", "createdAt"]
+    },
+    "ModerationReport": {
+      "title": "ModerationReport",
+      "description": "User reports against posts, comments, marketplace listings, or accounts reviewed by Master Admin",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "targetType": { "type": "string" },
+        "targetId": { "type": "string" },
+        "targetUserId": { "type": "string" },
+        "targetUserName": { "type": "string" },
+        "targetPreview": { "type": "string" },
+        "reporterId": { "type": "string" },
+        "reporterName": { "type": "string" },
+        "reason": { "type": "string" },
+        "status": { "type": "string" },
+        "resolutionAction": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "targetType", "targetId", "targetUserId", "reporterId", "reason", "status"]
     }
   },
   "firestore": {
@@ -85,15 +124,23 @@
     },
     "/live_commodities/{commodityId}": {
       "schema": "LiveCommodity",
-      "description": "Real agricultural commodities posted by verified producers"
+      "description": "Agricultural commodities posted by verified producers"
     },
     "/live_community_posts/{postId}": {
       "schema": "LiveCommunityPost",
-      "description": "Real community social feed posts"
+      "description": "Community social feed posts with reactions and comments"
     },
-    "/live_community_posts/{postId}/comments/{commentId}": {
-      "schema": "LivePostComment",
-      "description": "Interactive comments on community posts"
+    "/nvat_bulletins/{bulletinId}": {
+      "schema": "NvatBulletinDoc",
+      "description": "Daily NVAT market bulletins and archive"
+    },
+    "/ai_history/{entryId}": {
+      "schema": "AiHistoryEntry",
+      "description": "AI agent interaction history"
+    },
+    "/moderation_reports/{reportId}": {
+      "schema": "ModerationReport",
+      "description": "Moderation reports queue"
     }
   }
 }

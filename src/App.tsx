@@ -23,6 +23,7 @@ import { GuestLockModal } from './components/GuestLockModal';
 import { AgribeeOnboardingModal } from './components/AgribeeOnboardingModal';
 import { DemoAccountSwitcherDrawer } from './components/DemoAccountSwitcherDrawer';
 import { AgribeeInteractiveTour } from './components/AgribeeInteractiveTour';
+import { AdminPasswordModal } from './components/AdminPasswordModal';
 
 const MainLayout: React.FC = () => {
   const { activeTab, isPagasaModalOpen, setIsPagasaModalOpen } = useApp();
@@ -35,7 +36,7 @@ const MainLayout: React.FC = () => {
   }, []);
 
   return (
-    <div className="min-h-screen flex flex-col bg-[#F4FFFC] text-[#1F4B2C]">
+    <div className="min-h-screen w-full overflow-x-hidden flex flex-col bg-[#F4FFFC] text-[#1F4B2C]">
       {mapsQuotaExceeded && (
         <div className="sticky top-0 z-50 bg-amber-50 border-b border-amber-200 px-4 py-3 text-xs sm:text-sm text-amber-900 flex items-center justify-between gap-2">
           <span>
@@ -90,6 +91,7 @@ const MainLayout: React.FC = () => {
       <AgribeeOnboardingModal />
       <DemoAccountSwitcherDrawer />
       <AgribeeInteractiveTour />
+      <AdminPasswordModal />
     </div>
   );
 };

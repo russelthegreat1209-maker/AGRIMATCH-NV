@@ -1,4 +1,4 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import {
   UserAccount,
   CommodityItem,
@@ -17,6 +17,9 @@ import {
   NvatMarketItem,
   CommunityPost,
   CommunityPostComment,
+  ReactionType,
+  ModerationReport,
+  AiHistoryEntry,
 } from '../types';
 import {
   SEED_ACCOUNTS,
@@ -29,20 +32,35 @@ import {
   SEED_AGENT_PACKETS,
   INITIAL_COUNTERS,
   MASTER_ADMIN_EMAIL,
-  MASTER_ADMIN_PASSWORD,
   SEED_VERIFICATION_AUDIT_LOGS,
   SEED_COMMUNITY_POSTS,
+  SEED_NVAT_ARCHIVE,
+  SEED_MODERATION_REPORTS,
+  SEED_AI_HISTORY,
 } from '../data/seedData';
-import { checkDualHandshakeCompletion, parseNvatTextToStructured } from '../utils/agriMath';
+import {
+  checkDualHandshakeCompletion,
+  parseNvatTextToStructured,
+  toggleReactionMap,
+  evaluateStrikeAction,
+} from '../utils/agriMath';
 import { getCropPhotoByName } from '../data/cropAssets';
-import { auth, db, signInWithGoogle, logOutFirebase, testFirestoreConnection } from '../config/firebase';
+import {
+  auth,
+  db,
+  signInWithGoogle,
+  logOutFirebase,
+  testFirestoreConnection,
+  getGoogleSheetsAccessToken,
+  exportBulletinToGoogleSheets,
+} from '../config/firebase';
 import { TRANSLATIONS, LanguageCode, TranslationDictionary, LANGUAGE_OPTIONS } from '../i18n/translations';
 import {
   collection,
   doc,
   onSnapshot,
   setDoc,
-  addDoc,
+  deleteDoc,
   updateDoc,
 } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
@@ -60,6 +78,9 @@ interface AppContextType {
   chatThreads: ChatThread[];
   chatMessages: ChatMessage[];
   nvatReport: NvatBulletinReport;
+  nvatArchive: NvatBulletinReport[];
+  selectedNvatDate: string;
+  setSelectedNvatDate: (date: string) => void;
   announcements: AdminAnnouncement[];
   counters: SystemCounters;
   agentPackets: AgentPacket[];
@@ -77,8 +98,14 @@ interface AppContextType {
   setIsDemoSwitcherOpen: (open: boolean) => void;
   isPagasaModalOpen: boolean;
   setIsPagasaModalOpen: (open: boolean) => void;
+  isAdminPasswordModalOpen: boolean;
+  setIsAdminPasswordModalOpen: (open: boolean) => void;
   activeOrderModalItem: CommodityItem | null;
   setActiveOrderModalItem: (item: CommodityItem | null) => void;
+  highlightedCommodityId: string | null;
+  setHighlightedCommodityId: (id: string | null) => void;
+  requestedCommunityView: 'feed' | 'bulletins' | null;
+  setRequestedCommunityView: (view: 'feed' | 'bulletins' | null) => void;
   selectedRoute: {
     from: { lat: number; lng: number; name: string };
     to: { lat: number; lng: number; name: string };
@@ -92,9 +119,15 @@ interface AppContextType {
   switchDemoAccount: (accountId: string) => void;
   switchDemoRole: (role: StakeholderRole) => void;
   loginWithCredentials: (email: string, pass: string) => { success: boolean; message?: string };
+  verifyMasterAdminPassword: (
+    password: string,
+    emailInput?: string
+  ) => Promise<{ success: boolean; message?: string }>;
   registerNewAccount: (account: Partial<UserAccount>) => UserAccount;
   logout: () => void;
   navigateToTabWithGuard: (tab: string) => void;
+  openMarketplaceToCommodity: (commodityId: string) => void;
+  openCommunityBulletins: () => void;
 
   // Commerce & Dual-Handshake
   createOrderInquiry: (
@@ -129,9 +162,27 @@ interface AppContextType {
   processAndPublishNvatBulletin: (rawText: string, preParsedItems?: NvatMarketItem[]) => void;
   publishStructuredNvatBulletin: (items: NvatMarketItem[], sourceTitle?: string) => void;
   triggerAgentPacket: (packet: Omit<AgentPacket, 'id' | 'timestamp'>) => void;
+  exportCurrentBulletinToSheets: (
+    bulletin?: NvatBulletinReport
+  ) => Promise<{ spreadsheetId: string; spreadsheetUrl: string }>;
 
-  // Verification Audit Trail
+  // Verification Audit Trail & Moderation Reports & AI History
   verificationAuditLogs: VerificationAuditLog[];
+  moderationReports: ModerationReport[];
+  submitModerationReport: (report: {
+    targetType: ModerationReport['targetType'];
+    targetId: string;
+    targetUserId: string;
+    targetUserName: string;
+    targetPreview: string;
+    reason: string;
+  }) => void;
+  adminResolveReport: (
+    reportId: string,
+    action: 'STRIKE_DELETE' | 'BAN_DIRECT' | 'DISMISS'
+  ) => void;
+  aiHistory: AiHistoryEntry[];
+  logAiHistory: (entry: Omit<AiHistoryEntry, 'id' | 'createdAt'>) => void;
 
   // Interactive Guided Tour
   isInteractiveTourActive: boolean;
@@ -146,6 +197,8 @@ interface AppContextType {
   communityPosts: CommunityPost[];
   createCommunityPost: (content: string, category: CommunityPost['category'], imageUrl?: string) => void;
   likeCommunityPost: (postId: string) => void;
+  reactToPost: (postId: string, reactionType: ReactionType) => void;
+  deleteCommunityPost: (postId: string) => void;
   addPostComment: (postId: string, text: string) => void;
   updateUserProfile: (updates: Partial<UserAccount>) => void;
   startPrivateChatWithUser: (targetUser: { id: string; name: string; role: StakeholderRole; avatar: string }) => void;
@@ -158,6 +211,22 @@ interface AppContextType {
 }
 
 const AppContext = createContext<AppContextType | undefined>(undefined);
+
+async function syncToDatabase(
+  entity: string,
+  action: string,
+  payload: Record<string, unknown>
+) {
+  try {
+    await fetch('/api/db/sync', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ entity, action, payload }),
+    });
+  } catch {
+    // Non-blocking background sync to Cloud SQL
+  }
+}
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
   const [environmentMode, setEnvironmentModeState] = useState<EnvironmentMode>('demo');
@@ -194,7 +263,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const t = TRANSLATIONS[language] || TRANSLATIONS.en;
-  
+
   // DEMO MODE ISOLATED SANDBOX DATA
   const [demoCurrentUser, setDemoCurrentUser] = useState<UserAccount | null>(() => SEED_ACCOUNTS[0]);
   const [demoAccounts, setDemoAccounts] = useState<UserAccount[]>(SEED_ACCOUNTS);
@@ -202,7 +271,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [demoOrders, setDemoOrders] = useState<OrderRecord[]>(SEED_ORDERS);
   const [demoPosts, setDemoPosts] = useState<CommunityPost[]>(SEED_COMMUNITY_POSTS);
 
-  // LIVE PRODUCTION REAL-TIME DATA (ZERO DEMO DATA IN LIVE PRODUCTION)
+  // LIVE PRODUCTION REAL-TIME DATA
   const [liveCurrentUser, setLiveCurrentUser] = useState<UserAccount | null>(null);
   const [liveAccounts, setLiveAccounts] = useState<UserAccount[]>([]);
   const [liveCommodities, setLiveCommodities] = useState<CommodityItem[]>([]);
@@ -210,7 +279,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [livePosts, setLivePosts] = useState<CommunityPost[]>([]);
   const [isFirebaseConnected, setIsFirebaseConnected] = useState<boolean>(true);
 
-  // Dynamic state routing based on active environmentMode
   const currentUser = environmentMode === 'production' ? liveCurrentUser : demoCurrentUser;
   const accounts = environmentMode === 'production' ? liveAccounts : demoAccounts;
   const commodities = environmentMode === 'production' ? liveCommodities : demoCommodities;
@@ -241,26 +309,45 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   };
 
+  const setPosts = (updater: React.SetStateAction<CommunityPost[]>) => {
+    if (environmentMode === 'production') {
+      setLivePosts(updater);
+    } else {
+      setDemoPosts(updater);
+    }
+  };
+
   const [chatThreads, setChatThreads] = useState<ChatThread[]>(SEED_THREADS);
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>(SEED_MESSAGES);
-  const [nvatReport, setNvatReport] = useState<NvatBulletinReport>(INITIAL_NVAT_ITEMS);
+  const [nvatArchive, setNvatArchive] = useState<NvatBulletinReport[]>(SEED_NVAT_ARCHIVE);
+  const [selectedNvatDate, setSelectedNvatDate] = useState<string>(INITIAL_NVAT_ITEMS.date);
+
+  const nvatReport = useMemo(() => {
+    return (
+      nvatArchive.find((r) => r.date === selectedNvatDate) ||
+      nvatArchive[0] ||
+      INITIAL_NVAT_ITEMS
+    );
+  }, [nvatArchive, selectedNvatDate]);
+
   const [announcements, setAnnouncements] = useState<AdminAnnouncement[]>(SEED_ANNOUNCEMENTS);
   const [counters, setCounters] = useState<SystemCounters>(INITIAL_COUNTERS);
   const [agentPackets, setAgentPackets] = useState<AgentPacket[]>(SEED_AGENT_PACKETS);
   const [verificationAuditLogs, setVerificationAuditLogs] = useState<VerificationAuditLog[]>(SEED_VERIFICATION_AUDIT_LOGS);
+  const [moderationReports, setModerationReports] = useState<ModerationReport[]>(SEED_MODERATION_REPORTS);
+  const [aiHistory, setAiHistory] = useState<AiHistoryEntry[]>(SEED_AI_HISTORY);
 
   // Real-time Firestore sync & Auth state listener
   useEffect(() => {
     testFirestoreConnection().then((ok) => setIsFirebaseConnected(ok));
 
-    // Listen to Auth State
     const unsubscribeAuth = onAuthStateChanged(auth, async (fbUser) => {
       if (fbUser) {
         const liveUserObj: UserAccount = {
           id: fbUser.uid,
           name: fbUser.displayName || 'Verified Agri Producer',
           email: fbUser.email || '',
-          role: fbUser.email === 'russelthegreat1209@gmail.com' ? 'MASTER_ADMIN' : 'Farmer',
+          role: 'Farmer',
           phone: fbUser.phoneNumber || '+63 917 555 4321',
           municipality: 'Bambang',
           barangay: 'Aliaga',
@@ -271,8 +358,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           bio: 'Verified Real-Time Producer on AGRIMATCH NV',
           verified: true,
           status: 'ACTIVE',
+          strikeCount: 0,
+          completedTradesCount: 0,
         };
         setLiveCurrentUser(liveUserObj);
+        void syncToDatabase('user', 'upsert', liveUserObj as unknown as Record<string, unknown>);
         try {
           await setDoc(doc(db, 'users', fbUser.uid), liveUserObj, { merge: true });
         } catch (e) {
@@ -283,7 +373,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     });
 
-    // Real-time listener for live_commodities
     const unsubCommodities = onSnapshot(
       collection(db, 'live_commodities'),
       (snapshot) => {
@@ -298,7 +387,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       }
     );
 
-    // Real-time listener for live_community_posts
     const unsubPosts = onSnapshot(
       collection(db, 'live_community_posts'),
       (snapshot) => {
@@ -336,7 +424,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [isOnboardingOpen, setIsOnboardingOpen] = useState(false);
   const [isDemoSwitcherOpen, setIsDemoSwitcherOpen] = useState(false);
   const [isPagasaModalOpen, setIsPagasaModalOpen] = useState(false);
+  const [isAdminPasswordModalOpen, setIsAdminPasswordModalOpen] = useState(false);
+  const [pendingAdminRedirect, setPendingAdminRedirect] = useState(false);
   const [activeOrderModalItem, setActiveOrderModalItem] = useState<CommodityItem | null>(null);
+  const [highlightedCommodityId, setHighlightedCommodityId] = useState<string | null>(null);
+  const [requestedCommunityView, setRequestedCommunityView] = useState<'feed' | 'bulletins' | null>(null);
   const [activeChatThreadId, setActiveChatThreadId] = useState<string | null>(SEED_THREADS[0].id);
   const [selectedRoute, setSelectedRoute] = useState<AppContextType['selectedRoute']>(null);
 
@@ -349,26 +441,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
   });
   const [currentTourStep, setCurrentTourStep] = useState<number>(0);
-
-  const startInteractiveTour = () => {
-    setCurrentTourStep(0);
-    setIsInteractiveTourActive(true);
-    addNotification('AGRIBEE Interactive Tour started! Follow the glowing spotlight.', 'info');
-  };
-
-  const skipTour = () => {
-    setIsInteractiveTourActive(false);
-    try {
-      localStorage.setItem('agribee_tour_dismissed', 'true');
-    } catch {
-      // ignore
-    }
-    addNotification('Tutorial skipped. You can reopen Agri Bee anytime using the floating button!', 'info');
-  };
-
-  const resumeTour = () => {
-    setIsInteractiveTourActive(true);
-  };
 
   const [recentNotifications, setRecentNotifications] = useState<
     { id: string; text: string; time: string; type: 'info' | 'success' | 'alert' }[]
@@ -394,7 +466,26 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     ]);
   };
 
-  // Visitor counter tick on mount
+  const startInteractiveTour = () => {
+    setCurrentTourStep(0);
+    setIsInteractiveTourActive(true);
+    addNotification('AGRIBEE Interactive Tour started! Follow along on the right panel.', 'info');
+  };
+
+  const skipTour = () => {
+    setIsInteractiveTourActive(false);
+    try {
+      localStorage.setItem('agribee_tour_dismissed', 'true');
+    } catch {
+      // ignore
+    }
+    addNotification('Tutorial skipped. Reopen Agri Bee anytime from the floating button.', 'info');
+  };
+
+  const resumeTour = () => {
+    setIsInteractiveTourActive(true);
+  };
+
   useEffect(() => {
     setCounters((c) => ({
       ...c,
@@ -403,27 +494,136 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   }, []);
 
   const navigateToTabWithGuard = (tab: string) => {
-    // If user is guest (null), block internal tabs
     if (!currentUser && tab !== 'public-landing') {
       setGuestAttemptedTab(tab);
       setIsGuestLockOpen(true);
       return;
     }
+    if (tab === 'admin' && currentUser?.role !== 'MASTER_ADMIN') {
+      setPendingAdminRedirect(true);
+      setIsAdminPasswordModalOpen(true);
+      return;
+    }
     setActiveTab(tab);
+  };
+
+  const openMarketplaceToCommodity = (commodityId: string) => {
+    setHighlightedCommodityId(commodityId);
+    if (!currentUser) {
+      setGuestAttemptedTab('marketplace');
+      setIsGuestLockOpen(true);
+      return;
+    }
+    setActiveTab('marketplace');
+    addNotification('Jumping to highlighted commodity in Marketplace.', 'info');
+  };
+
+  const openCommunityBulletins = () => {
+    setRequestedCommunityView('bulletins');
+    if (!currentUser) {
+      setGuestAttemptedTab('community');
+      setIsGuestLockOpen(true);
+      return;
+    }
+    setActiveTab('community');
+  };
+
+  const buildMasterAdminProfile = (): UserAccount => {
+    const existing = demoAccounts.find((a) => a.role === 'MASTER_ADMIN');
+    if (existing) return existing;
+    return {
+      id: 'master_admin',
+      name: 'Engr. Russel Gurat (Master Admin)',
+      organization: 'Provincial Agricultural Research Command',
+      email: MASTER_ADMIN_EMAIL,
+      role: 'MASTER_ADMIN',
+      phone: '+63 917 888 9999',
+      municipality: 'Bayombong',
+      barangay: 'Don Domingo Maddela',
+      lat: 16.4856,
+      lng: 121.1492,
+      avatar: '',
+      coverPhoto: '',
+      bio: 'Platform Creator, Master Administrator & Lead Multi-Agent AI Engineer for AGRIMATCH-NV.',
+      verified: true,
+      status: 'ACTIVE',
+      strikeCount: 0,
+      completedTradesCount: 0,
+    };
+  };
+
+  const verifyMasterAdminPassword = async (
+    password: string,
+    emailInput?: string
+  ): Promise<{ success: boolean; message?: string }> => {
+    if (
+      emailInput &&
+      emailInput.trim().toLowerCase() !== MASTER_ADMIN_EMAIL.toLowerCase()
+    ) {
+      return {
+        success: false,
+        message: 'Email does not match the Master Administrator account.',
+      };
+    }
+
+    try {
+      const res = await fetch('/api/admin/verify-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password }),
+      });
+      const data = await res.json();
+      if (!res.ok || !data.authorized) {
+        return {
+          success: false,
+          message: data.error || 'Invalid Master Admin password.',
+        };
+      }
+
+      const masterAdminAcc = buildMasterAdminProfile();
+      if (environmentMode === 'production') {
+        setLiveCurrentUser(masterAdminAcc);
+      } else {
+        setDemoCurrentUser(masterAdminAcc);
+      }
+      if (pendingAdminRedirect || activeTab !== 'admin') {
+        setActiveTab('admin');
+      }
+      setPendingAdminRedirect(false);
+      addNotification('Master Admin Command Center unlocked.', 'success');
+      return { success: true };
+    } catch {
+      return {
+        success: false,
+        message: 'Unable to reach verification server. Please retry.',
+      };
+    }
   };
 
   const switchDemoAccount = (accountId: string) => {
     const acc = demoAccounts.find((a) => a.id === accountId);
-    if (acc) {
-      setDemoCurrentUser(acc);
-      addNotification(`Switched active profile to ${acc.name} (${acc.role})`, 'success');
-      if (acc.role === 'MASTER_ADMIN') {
-        setActiveTab('admin');
-      }
+    if (!acc) return;
+
+    if (acc.role === 'MASTER_ADMIN' && currentUser?.role !== 'MASTER_ADMIN') {
+      setPendingAdminRedirect(true);
+      setIsAdminPasswordModalOpen(true);
+      return;
+    }
+
+    setDemoCurrentUser(acc);
+    addNotification(`Switched active profile to ${acc.name} (${acc.role})`, 'success');
+    if (acc.role === 'MASTER_ADMIN') {
+      setActiveTab('admin');
     }
   };
 
   const switchDemoRole = (role: StakeholderRole) => {
+    if (role === 'MASTER_ADMIN' && currentUser?.role !== 'MASTER_ADMIN') {
+      setPendingAdminRedirect(true);
+      setIsAdminPasswordModalOpen(true);
+      return;
+    }
+
     const acc = demoAccounts.find((a) => a.role === role);
     if (acc) {
       setDemoCurrentUser(acc);
@@ -439,45 +639,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       await signInWithGoogle();
       addNotification('Signed in with Google Firebase Auth!', 'success');
       setActiveTab('dashboard');
-    } catch (e) {
+    } catch {
       addNotification('Google Sign-In failed or was cancelled.', 'alert');
     }
   };
 
-  const loginWithCredentials = (email: string, pass: string): { success: boolean; message?: string } => {
+  const loginWithCredentials = (email: string, _pass: string): { success: boolean; message?: string } => {
     const cleanEmail = email.trim().toLowerCase();
-    const cleanPass = pass.trim();
 
-    // Check Master Admin exact credentials
-    if (cleanEmail === MASTER_ADMIN_EMAIL.toLowerCase() && cleanPass === MASTER_ADMIN_PASSWORD) {
-      const masterAdminAcc: UserAccount = {
-        id: 'admin_master_01',
-        name: 'Engr. Russel (System Architect)',
-        organization: 'Provincial Agricultural Research Command',
-        email: MASTER_ADMIN_EMAIL,
-        role: 'MASTER_ADMIN',
-        phone: '+63 917 888 9999',
-        municipality: 'Bayombong',
-        barangay: 'Don Domingo Madden',
-        lat: 16.4856,
-        lng: 121.1492,
-        avatar: '',
-        coverPhoto: '',
-        bio: 'Platform Creator, Master Administrator & Lead Multi-Agent AI Engineer for AGRIMATCH-NV.',
-        verified: true,
-        status: 'ACTIVE',
+    if (cleanEmail === MASTER_ADMIN_EMAIL.toLowerCase()) {
+      return {
+        success: false,
+        message: 'Use the Master Admin password verification flow.',
       };
-      if (environmentMode === 'production') {
-        setLiveCurrentUser(masterAdminAcc);
-      } else {
-        setDemoCurrentUser(masterAdminAcc);
-      }
-      setActiveTab('admin');
-      addNotification('Master Admin Command Center Unlocked!', 'success');
-      return { success: true };
     }
 
-    // Check accounts in current active dataset
     const match = accounts.find((a) => a.email.toLowerCase() === cleanEmail);
     if (match) {
       if (match.status === 'BANNED') {
@@ -494,9 +670,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     return {
       success: false,
-      message: environmentMode === 'production'
-        ? 'Account not found in Live Production database. Please Register or Sign In with Google.'
-        : 'Invalid credentials. In Demo Mode, try a demo email or use the Demo Switcher.',
+      message:
+        environmentMode === 'production'
+          ? 'Account not found in Live database. Please Register or Sign In with Google.'
+          : 'Invalid credentials. Try a stakeholder email or use the Demo Switcher.',
     };
   };
 
@@ -506,7 +683,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       name: accountData.name || 'New Stakeholder',
       organization: accountData.organization || '',
       email: accountData.email || `user${Date.now()}@agrimatch-nv.ph`,
-      role: accountData.role || 'Farmer',
+      role: accountData.role === 'MASTER_ADMIN' ? 'Farmer' : accountData.role || 'Farmer',
       phone: accountData.phone || '+63 9XX XXX XXXX',
       municipality: accountData.municipality || 'Bambang',
       barangay: accountData.barangay || 'Aliaga',
@@ -518,13 +695,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       verified: true,
       status: 'ACTIVE',
       rating: 5.0,
+      strikeCount: 0,
+      completedTradesCount: 0,
     };
 
     if (environmentMode === 'production') {
       setLiveAccounts((prev) => [newAcc, ...prev]);
       setLiveCurrentUser(newAcc);
       try {
-        setDoc(doc(db, 'users', newAcc.id), newAcc);
+        void setDoc(doc(db, 'users', newAcc.id), newAcc);
       } catch (e) {
         console.warn('Error saving live user:', e);
       }
@@ -533,7 +712,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       setDemoCurrentUser(newAcc);
     }
 
-    // Update role counts in counters
+    void syncToDatabase('user', 'upsert', newAcc as unknown as Record<string, unknown>);
+
     setCounters((c) => ({
       ...c,
       currentlyLoggedIn: c.currentlyLoggedIn + 1,
@@ -560,6 +740,29 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     }
     setActiveTab('public-landing');
     addNotification('Logged out from platform session.', 'info');
+  };
+
+  const logAiHistory = (entry: Omit<AiHistoryEntry, 'id' | 'createdAt'>) => {
+    const newEntry: AiHistoryEntry = {
+      id: `ai-hist-${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      createdAt: new Date().toISOString(),
+      ...entry,
+    };
+    setAiHistory((prev) => [newEntry, ...prev.slice(0, 49)]);
+    void syncToDatabase('ai_history', 'upsert', {
+      userUid: entry.userId,
+      userRole: entry.userRole,
+      agentType: entry.agentType,
+      prompt: entry.prompt,
+      responseSummary: entry.responseSummary,
+      metadata: entry.metadata || null,
+      poweredByGemini: entry.poweredByGemini,
+    });
+    try {
+      void setDoc(doc(db, 'ai_history', newEntry.id), newEntry);
+    } catch {
+      // fallback
+    }
   };
 
   const createOrderInquiry = (
@@ -638,7 +841,19 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setChatMessages((prev) => [...prev, ...initialMessages]);
     setActiveChatThreadId(threadId);
 
-    // Trigger Multi-Agent Packet
+    void syncToDatabase('order', 'upsert', newOrder as unknown as Record<string, unknown>);
+    initialMessages.forEach((m) =>
+      void syncToDatabase('private_message', 'upsert', {
+        ...m,
+        recipientUid: commodity.supplierId,
+      })
+    );
+    try {
+      void setDoc(doc(db, 'orders', newOrder.id), newOrder);
+    } catch {
+      // fallback
+    }
+
     triggerAgentPacket({
       fromAgent: 'Buyer Agent',
       toAgent: 'Supplier Agent',
@@ -657,7 +872,6 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   };
 
   const handleAtomicCompletion = (completedOrder: OrderRecord) => {
-    // 1. Deduct quantity from commodity stock
     setCommodities((prev) =>
       prev.map((c) => {
         if (c.id === completedOrder.commodityId) {
@@ -668,21 +882,32 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       })
     );
 
-    // 2. Increment system counters
+    setAccounts((prev) =>
+      prev.map((acc) => {
+        if (acc.id === completedOrder.supplierId || acc.id === completedOrder.buyerId) {
+          return {
+            ...acc,
+            completedTradesCount: (acc.completedTradesCount || 0) + 1,
+          };
+        }
+        return acc;
+      })
+    );
+
     setCounters((c) => ({
       ...c,
       totalCompletedTransactions: c.totalCompletedTransactions + 1,
       totalCommoditiesPostedKg: Math.max(0, c.totalCommoditiesPostedKg - completedOrder.quantityKg),
     }));
 
-    // 3. Post system confirmation message in chat
     sendMessage(
       completedOrder.chatThreadId,
-      `🎉 TRANSACTION COMPLETE: Order #${completedOrder.id} for ${completedOrder.quantityKg} kg has been fulfilled! Permanent ledger record written.`,
+      `TRANSACTION COMPLETE: Order #${completedOrder.id} for ${completedOrder.quantityKg} kg fulfilled! Permanent ledger record written.`,
       {}
     );
 
-    // 4. Multi-agent event
+    void syncToDatabase('order', 'upsert', completedOrder as unknown as Record<string, unknown>);
+
     triggerAgentPacket({
       fromAgent: 'Supplier Agent',
       toAgent: 'Market Agent',
@@ -695,7 +920,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     });
 
     addNotification(
-      `Transaction #${completedOrder.id} successfully completed! Counters updated.`,
+      `Transaction #${completedOrder.id} completed! Counters and seller trades updated.`,
       'success'
     );
   };
@@ -712,6 +937,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             updatedAt: new Date().toISOString(),
           };
 
+          void syncToDatabase('order', 'upsert', updated as unknown as Record<string, unknown>);
           if (checkDualHandshakeCompletion(true, ord.buyerConfirmedReceived)) {
             handleAtomicCompletion(updated);
           } else {
@@ -736,6 +962,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
             updatedAt: new Date().toISOString(),
           };
 
+          void syncToDatabase('order', 'upsert', updated as unknown as Record<string, unknown>);
           if (checkDualHandshakeCompletion(ord.supplierConfirmedSent, true)) {
             handleAtomicCompletion(updated);
           } else {
@@ -765,18 +992,35 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       ...extra,
     };
 
+    const thread = chatThreads.find((th) => th.id === threadId);
+    const recipientUid = thread
+      ? thread.buyerId === currentUser.id
+        ? thread.supplierId
+        : thread.buyerId
+      : '';
+
     setChatMessages((prev) => [...prev, newMsg]);
     setChatThreads((prev) =>
-      prev.map((t) =>
-        t.id === threadId
+      prev.map((th) =>
+        th.id === threadId
           ? {
-              ...t,
+              ...th,
               lastMessageSnippet: text,
               lastMessageTimestamp: new Date().toISOString(),
             }
-          : t
+          : th
       )
     );
+
+    void syncToDatabase('private_message', 'upsert', {
+      ...newMsg,
+      recipientUid,
+    });
+    try {
+      void setDoc(doc(db, 'private_messages', newMsg.id), { ...newMsg, recipientUid });
+    } catch {
+      // fallback
+    }
   };
 
   const addNewCommodity = (cropData: Partial<CommodityItem>) => {
@@ -796,16 +1040,24 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       availableKg: cropData.availableKg || 100,
       pricePerKg: cropData.pricePerKg || 30,
       minOrderKg: cropData.minOrderKg || 20,
+      farmgatePricePhp: cropData.farmgatePricePhp,
+      contactPhone: cropData.contactPhone || currentUser.phone,
       imageUrl: cropData.imageUrl || getCropPhotoByName(cropData.name || '', cropData.category),
       additionalPhotos: cropData.additionalPhotos || [],
       videoUrl: cropData.videoUrl || '',
       mediaType: cropData.mediaType || (cropData.videoUrl ? 'video' : 'photo'),
       verificationStatus: 'PENDING',
-      aiAuthenticityScore: 92,
-      aiVisionNotes: 'Automated initial intake complete. Pending Master Admin verification review.',
+      aiAuthenticityScore: cropData.aiAuthenticityScore || 92,
+      aiVisionNotes:
+        cropData.aiVisionNotes ||
+        (cropData.manualGradeOverride
+          ? 'Manual quality override applied by producer — extended Admin verification required.'
+          : 'Automated initial intake complete. Pending Master Admin verification review.'),
       harvestDate: cropData.harvestDate || new Date().toISOString().split('T')[0],
-      daysToHarvest: 0,
+      daysToHarvest: cropData.daysToHarvest ?? 0,
       qualityGrade: cropData.qualityGrade || 'Grade A Premium',
+      aiSuggestedGrade: cropData.aiSuggestedGrade,
+      manualGradeOverride: cropData.manualGradeOverride,
       organicCertified: cropData.organicCertified || false,
       notes: cropData.notes || '',
       postedAt: new Date().toISOString(),
@@ -818,7 +1070,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       totalCommoditiesPostedKg: c.totalCommoditiesPostedKg + newCrop.availableKg,
     }));
 
-    addNotification(`Crop listing "${newCrop.name}" submitted! Status: PENDING Admin review.`, 'info');
+    void syncToDatabase('commodity', 'upsert', newCrop as unknown as Record<string, unknown>);
+    if (environmentMode === 'production') {
+      try {
+        void setDoc(doc(db, 'live_commodities', newCrop.id), newCrop);
+      } catch {
+        // fallback
+      }
+    }
+
+    addNotification(
+      cropData.manualGradeOverride
+        ? `Listing "${newCrop.name}" submitted with manual grade override (longer Admin inspection applies).`
+        : `Crop listing "${newCrop.name}" submitted! Status: PENDING Admin review.`,
+      cropData.manualGradeOverride ? 'alert' : 'info'
+    );
   };
 
   const approveCommodity = (commodityId: string) => {
@@ -828,19 +1094,21 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const verifyAndBoostCommodity = (commodityId: string) => {
     const targetCrop = commodities.find((c) => c.id === commodityId);
     setCommodities((prev) =>
-      prev.map((c) =>
-        c.id === commodityId
-          ? {
-              ...c,
-              verificationStatus: 'VERIFIED',
-              aiAuthenticityScore: Math.max(c.aiAuthenticityScore, 98),
-              verifiedBoostRank: Date.now(),
-            }
-          : c
-      )
+      prev.map((c) => {
+        if (c.id === commodityId) {
+          const updated: CommodityItem = {
+            ...c,
+            verificationStatus: 'VERIFIED',
+            aiAuthenticityScore: Math.max(c.aiAuthenticityScore, 98),
+            verifiedBoostRank: Date.now(),
+          };
+          void syncToDatabase('commodity', 'upsert', updated as unknown as Record<string, unknown>);
+          return updated;
+        }
+        return c;
+      })
     );
 
-    // Write to permanent Verification Audit Trail
     if (targetCrop) {
       const newAuditLog: VerificationAuditLog = {
         id: `audit-${Date.now()}`,
@@ -851,7 +1119,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         decision: 'APPROVED',
         reasonCode: 'AUTHENTIC_HARVEST_PHOTO_MATCH',
         notes: 'AI vision crate texture, harvest freshness, and farm location verified.',
-        reviewerId: currentUser?.id || 'admin_master_01',
+        reviewerId: currentUser?.id || 'master_admin',
         reviewerEmail: currentUser?.email || MASTER_ADMIN_EMAIL,
         timestamp: new Date().toISOString(),
       };
@@ -869,32 +1137,36 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     const targetCrop = commodities.find((c) => c.id === commodityId);
     if (!targetCrop) return;
 
-    // 1. Mark rejected / remove from public view
     setCommodities((prev) => prev.filter((c) => c.id !== commodityId));
+    void syncToDatabase('commodity', 'upsert', {
+      ...targetCrop,
+      verificationStatus: 'REJECTED',
+      rejectionReason: warningReason,
+    });
 
-    // 2. Increment supplier strike count & add warning message
     let newStrikeCount = 1;
     let isBanned = false;
 
     setAccounts((prev) =>
       prev.map((acc) => {
         if (acc.id === targetCrop.supplierId) {
-          newStrikeCount = (acc.strikeCount || 0) + 1;
-          isBanned = newStrikeCount >= 3;
+          const evalRes = evaluateStrikeAction(acc.strikeCount || 0, 'STRIKE_DELETE');
+          newStrikeCount = evalRes.nextStrikes;
+          isBanned = evalRes.autoBanned;
           const updatedWarnings = [...(acc.warningMessages || []), warningReason];
-
-          return {
+          const nextAcc: UserAccount = {
             ...acc,
             strikeCount: newStrikeCount,
-            status: isBanned ? 'BANNED' : acc.status,
+            status: evalRes.nextStatus,
             warningMessages: updatedWarnings,
           };
+          void syncToDatabase('user', 'upsert', nextAcc as unknown as Record<string, unknown>);
+          return nextAcc;
         }
         return acc;
       })
     );
 
-    // 3. Write to permanent Verification Audit Trail
     const newAuditLog: VerificationAuditLog = {
       id: `audit-${Date.now()}`,
       commodityId,
@@ -904,7 +1176,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       decision: 'REJECTED',
       reasonCode: warningReason.slice(0, 40).toUpperCase().replace(/[^A-Z0-9]/g, '_'),
       notes: warningReason,
-      reviewerId: currentUser?.id || 'admin_master_01',
+      reviewerId: currentUser?.id || 'master_admin',
       reviewerEmail: currentUser?.email || MASTER_ADMIN_EMAIL,
       timestamp: new Date().toISOString(),
     };
@@ -912,7 +1184,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
 
     addNotification(
       `Listing rejected. Official warning logged for ${targetCrop.supplierName} (Strike ${newStrikeCount}/3)${
-        newStrikeCount >= 3 ? ' — ACCOUNT SUSPENDED!' : ''
+        isBanned ? ' — ACCOUNT SUSPENDED!' : ''
       }`,
       'alert'
     );
@@ -928,8 +1200,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       prev.map((a) => {
         if (a.id === userId) {
           const newStatus = a.status === 'ACTIVE' ? 'BANNED' : 'ACTIVE';
-          addNotification(`User ${a.name} account is now ${newStatus}.`, newStatus === 'BANNED' ? 'alert' : 'success');
-          return { ...a, status: newStatus };
+          const updated = { ...a, status: newStatus } as UserAccount;
+          void syncToDatabase('user', 'upsert', updated as unknown as Record<string, unknown>);
+          addNotification(
+            `User ${a.name} account is now ${newStatus}.`,
+            newStatus === 'BANNED' ? 'alert' : 'success'
+          );
+          return updated;
         }
         return a;
       })
@@ -954,11 +1231,34 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification(`Official announcement published: "${title}"`, 'success');
   };
 
+  const commitNvatReport = (newReport: NvatBulletinReport) => {
+    setNvatArchive((prev) => {
+      const others = prev.filter((r) => r.date !== newReport.date);
+      return [newReport, ...others].sort((a, b) => b.date.localeCompare(a.date));
+    });
+    setSelectedNvatDate(newReport.date);
+    void syncToDatabase('nvat_bulletin', 'upsert', {
+      id: newReport.id,
+      bulletinDate: newReport.date,
+      rawText: newReport.rawText,
+      items: newReport.items,
+      executiveSummary: newReport.executiveSummary,
+      googleSheetUrl: newReport.googleSheetUrl || null,
+      publishedByUid: currentUser?.id || 'master_admin',
+    });
+    try {
+      void setDoc(doc(db, 'nvat_bulletins', newReport.id), newReport);
+    } catch {
+      // fallback
+    }
+  };
+
   const processAndPublishNvatBulletin = (rawText: string, preParsedItems?: NvatMarketItem[]) => {
     const today = new Date().toISOString().split('T')[0];
-    const parsedItems = preParsedItems && preParsedItems.length > 0
-      ? preParsedItems
-      : parseNvatTextToStructured(rawText, today);
+    const parsedItems =
+      preParsedItems && preParsedItems.length > 0
+        ? preParsedItems
+        : parseNvatTextToStructured(rawText, today);
 
     const newReport: NvatBulletinReport = {
       id: `nvat-bulletin-${Date.now()}`,
@@ -975,14 +1275,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       volumeShareData: parsedItems.map((item) => ({
         name: item.commodityName.split(' ')[0],
         volumeTons: item.estimatedVolumeTradedTons,
-        percentage: Math.round(
-          (item.estimatedVolumeTradedTons /
-            Math.max(
-              1,
-              parsedItems.reduce((acc, cur) => acc + cur.estimatedVolumeTradedTons, 0)
-            )) *
-            1000
-        ) / 10,
+        percentage:
+          Math.round(
+            (item.estimatedVolumeTradedTons /
+              Math.max(
+                1,
+                parsedItems.reduce((acc, cur) => acc + cur.estimatedVolumeTradedTons, 0)
+              )) *
+              1000
+          ) / 10,
       })),
       priceComparisonData: parsedItems.map((item) => ({
         name: item.commodityName.split(' ')[0],
@@ -992,11 +1293,14 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       historicalTrendData: nvatReport.historicalTrendData,
     };
 
-    setNvatReport(newReport);
+    commitNvatReport(newReport);
     addNotification('NVAT Market Intelligence AI processed and published live!', 'success');
   };
 
-  const publishStructuredNvatBulletin = (items: NvatMarketItem[], sourceTitle: string = 'NVAT Daily Bulletin, Bambang') => {
+  const publishStructuredNvatBulletin = (
+    items: NvatMarketItem[],
+    sourceTitle: string = 'NVAT Daily Bulletin, Bambang'
+  ) => {
     const today = new Date().toISOString().split('T')[0];
     const newReport: NvatBulletinReport = {
       id: `nvat-bulletin-${Date.now()}`,
@@ -1006,25 +1310,28 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       items: items.map((it) => ({
         ...it,
         originalDataSource: it.originalDataSource || sourceTitle,
-        lastUpdated: it.lastUpdated || (new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + ' PHT'),
+        lastUpdated:
+          it.lastUpdated ||
+          `${new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' })} PHT`,
       })),
       executiveSummary: [
-        `Human-in-the-Loop Verified: ${items.filter(i => i.priceType === 'Confirmed').length} Confirmed trading post prices approved.`,
-        `Extracted from ${sourceTitle} with anti-hallucination checks passed.`,
-        `Prevailing price benchmark range: Php ${Math.min(...items.map((i) => i.prevailingPricePhp))}/kg to Php ${Math.max(...items.map((i) => i.prevailingPricePhp))}/kg.`,
-        `Synchronized across community feed and historical commodity ledgers.`,
+        `Verified: ${items.filter((i) => i.priceType === 'Confirmed').length} Confirmed trading post prices approved.`,
+        `Extracted from ${sourceTitle} with validation checks passed.`,
+        `Prevailing price range: Php ${Math.min(...items.map((i) => i.prevailingPricePhp))}/kg to Php ${Math.max(...items.map((i) => i.prevailingPricePhp))}/kg.`,
+        'Synchronized across community NVAT Bulletins archive and ledgers.',
       ],
       volumeShareData: items.map((item) => ({
         name: item.commodityName.split(' ')[0],
         volumeTons: item.estimatedVolumeTradedTons || 10,
-        percentage: Math.round(
-          ((item.estimatedVolumeTradedTons || 10) /
-            Math.max(
-              1,
-              items.reduce((acc, cur) => acc + (cur.estimatedVolumeTradedTons || 10), 0)
-            )) *
-            1000
-        ) / 10,
+        percentage:
+          Math.round(
+            ((item.estimatedVolumeTradedTons || 10) /
+              Math.max(
+                1,
+                items.reduce((acc, cur) => acc + (cur.estimatedVolumeTradedTons || 10), 0)
+              )) *
+              1000
+          ) / 10,
       })),
       priceComparisonData: items.map((item) => ({
         name: item.commodityName.split(' ')[0],
@@ -1034,8 +1341,30 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       historicalTrendData: nvatReport.historicalTrendData,
     };
 
-    setNvatReport(newReport);
+    commitNvatReport(newReport);
     addNotification(`Validated bulletin published with ${items.length} verified commodities!`, 'success');
+  };
+
+  const exportCurrentBulletinToSheets = async (
+    bulletin?: NvatBulletinReport
+  ): Promise<{ spreadsheetId: string; spreadsheetUrl: string }> => {
+    const target = bulletin || nvatReport;
+    const accessToken = await getGoogleSheetsAccessToken();
+    const res = await exportBulletinToGoogleSheets({
+      accessToken,
+      title: 'AgriMatch NV - NVAT Daily Commodity Bulletin',
+      date: target.date,
+      rows: target.items,
+      summary: target.executiveSummary,
+    });
+
+    const updatedReport: NvatBulletinReport = {
+      ...target,
+      googleSheetUrl: res.spreadsheetUrl,
+    };
+    commitNvatReport(updatedReport);
+    addNotification(`NVAT Bulletin (${target.date}) exported to Google Sheets.`, 'success');
+    return res;
   };
 
   const triggerAgentPacket = (packetData: Omit<AgentPacket, 'id' | 'timestamp'>) => {
@@ -1047,7 +1376,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     setAgentPackets((prev) => [packet, ...prev.slice(0, 19)]);
   };
 
-  const createCommunityPost = (content: string, category: CommunityPost['category'], imageUrl?: string) => {
+  const createCommunityPost = (
+    content: string,
+    category: CommunityPost['category'],
+    imageUrl?: string
+  ) => {
     const newPost: CommunityPost = {
       id: `post-${Date.now()}`,
       authorId: currentUser?.id || 'guest_01',
@@ -1060,45 +1393,67 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       imageUrl,
       timestamp: 'Just now',
       likes: [],
+      reactions: { heart: [], wow: [], sad: [], care: [], angry: [] },
       comments: [],
     };
 
+    setPosts((prev) => [newPost, ...prev]);
+    void syncToDatabase('community_post', 'upsert', newPost as unknown as Record<string, unknown>);
     if (environmentMode === 'production') {
       try {
-        setDoc(doc(db, 'live_community_posts', newPost.id), newPost);
+        void setDoc(doc(db, 'live_community_posts', newPost.id), newPost);
       } catch (e) {
         console.warn('Error saving live post:', e);
       }
-    } else {
-      setDemoPosts((prev) => [newPost, ...prev]);
     }
     addNotification('Community update published to social wall!', 'success');
   };
 
-  const likeCommunityPost = (postId: string) => {
+  const reactToPost = (postId: string, reactionType: ReactionType) => {
     const userId = currentUser?.id || 'guest_user';
-    const updateLikes = (postsList: CommunityPost[]) =>
+    setPosts((postsList) =>
       postsList.map((p) => {
-        if (p.id === postId) {
-          const alreadyLiked = p.likes.includes(userId);
-          const newLikes = alreadyLiked ? p.likes.filter((id) => id !== userId) : [...p.likes, userId];
-          if (environmentMode === 'production') {
-            try {
-              updateDoc(doc(db, 'live_community_posts', postId), { likes: newLikes });
-            } catch (e) {
-              console.warn(e);
-            }
+        if (p.id !== postId) return p;
+        const baseReactions =
+          p.reactions || (p.likes.length > 0 ? { heart: p.likes } : {});
+        const nextReactions = toggleReactionMap(baseReactions, userId, reactionType);
+        const nextLikes = nextReactions.heart || [];
+        const updatedPost: CommunityPost = {
+          ...p,
+          reactions: nextReactions,
+          likes: nextLikes,
+        };
+        void syncToDatabase('community_post', 'upsert', updatedPost as unknown as Record<string, unknown>);
+        if (environmentMode === 'production') {
+          try {
+            void updateDoc(doc(db, 'live_community_posts', postId), {
+              reactions: nextReactions,
+              likes: nextLikes,
+            });
+          } catch (e) {
+            console.warn(e);
           }
-          return { ...p, likes: newLikes };
         }
-        return p;
-      });
+        return updatedPost;
+      })
+    );
+  };
 
+  const likeCommunityPost = (postId: string) => {
+    reactToPost(postId, 'heart');
+  };
+
+  const deleteCommunityPost = (postId: string) => {
+    setPosts((prev) => prev.filter((p) => p.id !== postId));
+    void syncToDatabase('community_post', 'delete', { id: postId });
     if (environmentMode === 'production') {
-      setLivePosts(updateLikes);
-    } else {
-      setDemoPosts(updateLikes);
+      try {
+        void deleteDoc(doc(db, 'live_community_posts', postId));
+      } catch {
+        // fallback
+      }
     }
+    addNotification('Community post removed from database.', 'info');
   };
 
   const addPostComment = (postId: string, text: string) => {
@@ -1115,13 +1470,15 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       likes: [],
     };
 
-    const updateComments = (postsList: CommunityPost[]) =>
+    setPosts((postsList) =>
       postsList.map((p) => {
         if (p.id === postId) {
           const updatedComments = [...(p.comments || []), newComment];
           if (environmentMode === 'production') {
             try {
-              updateDoc(doc(db, 'live_community_posts', postId), { comments: updatedComments });
+              void updateDoc(doc(db, 'live_community_posts', postId), {
+                comments: updatedComments,
+              });
             } catch (e) {
               console.warn(e);
             }
@@ -1129,14 +1486,148 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           return { ...p, comments: updatedComments };
         }
         return p;
-      });
+      })
+    );
 
-    if (environmentMode === 'production') {
-      setLivePosts(updateComments);
-    } else {
-      setDemoPosts(updateComments);
-    }
+    void syncToDatabase('post_comment', 'upsert', {
+      id: newComment.id,
+      postId,
+      authorUid: newComment.authorId,
+      authorName: newComment.authorName,
+      authorRole: newComment.authorRole,
+      text: newComment.text,
+    });
     addNotification('Comment posted to discussion.', 'info');
+  };
+
+  const submitModerationReport = (report: {
+    targetType: ModerationReport['targetType'];
+    targetId: string;
+    targetUserId: string;
+    targetUserName: string;
+    targetPreview: string;
+    reason: string;
+  }) => {
+    if (!report.reason.trim()) return;
+    const newReport: ModerationReport = {
+      id: `rep-${Date.now()}`,
+      ...report,
+      reporterId: currentUser?.id || 'guest_user',
+      reporterName: currentUser?.name || 'Community Member',
+      status: 'PENDING',
+      createdAt: new Date().toISOString(),
+    };
+    setModerationReports((prev) => [newReport, ...prev]);
+    void syncToDatabase('moderation_report', 'create', {
+      id: newReport.id,
+      targetType: newReport.targetType,
+      targetId: newReport.targetId,
+      targetUserUid: newReport.targetUserId,
+      targetUserName: newReport.targetUserName,
+      reporterUid: newReport.reporterId,
+      reporterName: newReport.reporterName,
+      reason: `${newReport.reason} (${newReport.targetPreview})`,
+    });
+    try {
+      void setDoc(doc(db, 'moderation_reports', newReport.id), newReport);
+    } catch {
+      // fallback
+    }
+    addNotification('Report submitted to Master Admin moderation queue.', 'info');
+  };
+
+  const adminResolveReport = (
+    reportId: string,
+    action: 'STRIKE_DELETE' | 'BAN_DIRECT' | 'DISMISS'
+  ) => {
+    const targetReport = moderationReports.find((r) => r.id === reportId);
+    if (!targetReport) return;
+
+    const nextStatusMap: Record<'STRIKE_DELETE' | 'BAN_DIRECT' | 'DISMISS', ModerationReport['status']> = {
+      STRIKE_DELETE: 'RESOLVED_STRIKE',
+      BAN_DIRECT: 'RESOLVED_BAN',
+      DISMISS: 'DISMISSED',
+    };
+
+    const resolvedAt = new Date().toISOString();
+
+    // Update target account strikes / ban status
+    let finalStrikes = 0;
+    let wasAutoBanned = false;
+    if (action === 'STRIKE_DELETE' || action === 'BAN_DIRECT') {
+      setAccounts((prev) =>
+        prev.map((acc) => {
+          if (acc.id !== targetReport.targetUserId) return acc;
+          const evalRes = evaluateStrikeAction(acc.strikeCount || 0, action);
+          finalStrikes = evalRes.nextStrikes;
+          wasAutoBanned = evalRes.autoBanned;
+          const warnMsg =
+            action === 'BAN_DIRECT'
+              ? `Account permanently banned by Master Admin (${targetReport.reason}).`
+              : `Strike ${finalStrikes}/3: Violation confirmed (${targetReport.reason}).`;
+          const nextAcc: UserAccount = {
+            ...acc,
+            strikeCount: finalStrikes,
+            status: evalRes.nextStatus,
+            warningMessages: [...(acc.warningMessages || []), warnMsg],
+          };
+          void syncToDatabase('user', 'upsert', nextAcc as unknown as Record<string, unknown>);
+          return nextAcc;
+        })
+      );
+
+      // Delete offending post / comment / commodity
+      if (targetReport.targetType === 'POST') {
+        deleteCommunityPost(targetReport.targetId);
+      } else if (targetReport.targetType === 'COMMENT') {
+        setPosts((prev) =>
+          prev.map((p) => ({
+            ...p,
+            comments: p.comments.filter((c) => c.id !== targetReport.targetId),
+          }))
+        );
+      } else if (targetReport.targetType === 'COMMODITY') {
+        deleteCommodity(targetReport.targetId);
+      }
+    }
+
+    setModerationReports((prev) =>
+      prev.map((r) =>
+        r.id === reportId
+          ? {
+              ...r,
+              status: nextStatusMap[action],
+              resolutionAction:
+                action === 'DISMISS'
+                  ? 'Dismissed by Master Admin'
+                  : action === 'BAN_DIRECT'
+                  ? 'User Banned & Content Removed'
+                  : `Strike ${finalStrikes}/3 Issued & Content Deleted`,
+              resolvedAt,
+            }
+          : r
+      )
+    );
+
+    void syncToDatabase('moderation_report', 'resolve', {
+      id: reportId,
+      status: nextStatusMap[action],
+      resolutionAction: action,
+    });
+
+    if (action === 'DISMISS') {
+      addNotification(`Report #${reportId} dismissed.`, 'info');
+    } else if (action === 'BAN_DIRECT' || wasAutoBanned) {
+      addNotification(
+        `User ${targetReport.targetUserName} suspended (3/3 strikes / direct ban) and content removed.`,
+        'alert'
+      );
+    } else {
+      addNotification(
+        `Strike ${finalStrikes}/3 issued to ${targetReport.targetUserName} and content deleted.`,
+        'alert'
+      );
+    }
   };
 
   const updateUserProfile = (updates: Partial<UserAccount>) => {
@@ -1144,8 +1635,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       if (!liveCurrentUser) return;
       const updated = { ...liveCurrentUser, ...updates };
       setLiveCurrentUser(updated);
+      void syncToDatabase('user', 'upsert', updated as unknown as Record<string, unknown>);
       try {
-        setDoc(doc(db, 'users', liveCurrentUser.id), updated, { merge: true });
+        void setDoc(doc(db, 'users', liveCurrentUser.id), updated, { merge: true });
       } catch (e) {
         console.warn(e);
       }
@@ -1154,8 +1646,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       const updated = { ...demoCurrentUser, ...updates };
       setDemoCurrentUser(updated);
       setDemoAccounts((prev) => prev.map((a) => (a.id === updated.id ? updated : a)));
+      void syncToDatabase('user', 'upsert', updated as unknown as Record<string, unknown>);
     }
-    addNotification('Profile & cover photo updated successfully!', 'success');
+    addNotification('Profile updated and synced to database!', 'success');
   };
 
   const startPrivateChatWithUser = (targetUser: {
@@ -1169,10 +1662,10 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       return;
     }
 
-    let existingThread = chatThreads.find(
-      (t) =>
-        (t.buyerId === currentUser.id && t.supplierId === targetUser.id) ||
-        (t.supplierId === currentUser.id && t.buyerId === targetUser.id)
+    const existingThread = chatThreads.find(
+      (th) =>
+        (th.buyerId === currentUser.id && th.supplierId === targetUser.id) ||
+        (th.supplierId === currentUser.id && th.buyerId === targetUser.id)
     );
 
     if (!existingThread) {
@@ -1210,6 +1703,9 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         chatThreads,
         chatMessages,
         nvatReport,
+        nvatArchive,
+        selectedNvatDate,
+        setSelectedNvatDate,
         announcements,
         counters,
         agentPackets,
@@ -1225,16 +1721,25 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         setIsDemoSwitcherOpen,
         isPagasaModalOpen,
         setIsPagasaModalOpen,
+        isAdminPasswordModalOpen,
+        setIsAdminPasswordModalOpen,
         activeOrderModalItem,
         setActiveOrderModalItem,
+        highlightedCommodityId,
+        setHighlightedCommodityId,
+        requestedCommunityView,
+        setRequestedCommunityView,
         selectedRoute,
         setSelectedRoute,
         switchDemoAccount,
         switchDemoRole,
         loginWithCredentials,
+        verifyMasterAdminPassword,
         registerNewAccount,
         logout,
         navigateToTabWithGuard,
+        openMarketplaceToCommodity,
+        openCommunityBulletins,
         createOrderInquiry,
         markOrderSent,
         markOrderReceived,
@@ -1252,7 +1757,13 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         processAndPublishNvatBulletin,
         publishStructuredNvatBulletin,
         triggerAgentPacket,
+        exportCurrentBulletinToSheets,
         verificationAuditLogs,
+        moderationReports,
+        submitModerationReport,
+        adminResolveReport,
+        aiHistory,
+        logAiHistory,
         isInteractiveTourActive,
         setIsInteractiveTourActive,
         currentTourStep,
@@ -1265,6 +1776,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         communityPosts,
         createCommunityPost,
         likeCommunityPost,
+        reactToPost,
+        deleteCommunityPost,
         addPostComment,
         updateUserProfile,
         startPrivateChatWithUser,

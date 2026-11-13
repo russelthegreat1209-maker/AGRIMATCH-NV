@@ -1,51 +1,78 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useApp } from '../context/AppContext';
 import {
   Send,
   MessageSquare,
-  Heart,
-  Share2,
   Image as ImageIcon,
   CheckCircle2,
   Sparkles,
   MapPin,
-  Clock,
-  Phone,
-  User,
   Users,
   ShieldCheck,
-  AlertTriangle,
-  TrendingUp,
   FileSpreadsheet,
   X,
   Filter,
   Camera,
-  Layers,
-  Building2,
-  Tag,
+  Flag,
+  Calendar,
+  ShoppingBag,
+  ExternalLink,
 } from 'lucide-react';
-import { CommunityPost, NvatMarketItem, StakeholderRole } from '../types';
+import {
+  CommunityPost,
+  ModerationReport,
+  NvatMarketItem,
+  ReactionType,
+  StakeholderRole,
+} from '../types';
 import { UserAvatar } from './UserAvatar';
 import { REAL_CROP_GALLERY } from '../data/cropAssets';
-import { parseNvatTextToStructured } from '../utils/agriMath';
+import {
+  aggregateReactions,
+  parseNvatTextToStructured,
+  REACTION_TYPES,
+} from '../utils/agriMath';
+
+const REACTION_META: Record<ReactionType, { label: string; emoji: string; pillClass: string }> = {
+  heart: { label: 'Heart', emoji: '❤️', pillClass: 'bg-rose-50 text-rose-700 border-rose-300' },
+  wow: { label: 'Wow', emoji: '😮', pillClass: 'bg-amber-50 text-amber-800 border-amber-300' },
+  sad: { label: 'Sad', emoji: '😢', pillClass: 'bg-sky-50 text-sky-800 border-sky-300' },
+  care: { label: 'Care', emoji: '🤗', pillClass: 'bg-emerald-50 text-emerald-800 border-emerald-300' },
+  angry: { label: 'Angry', emoji: '😡', pillClass: 'bg-red-50 text-red-700 border-red-300' },
+};
 
 export const CommunityChatModule: React.FC = () => {
   const {
     currentUser,
+    accounts,
+    commodities,
     communityPosts,
     createCommunityPost,
-    likeCommunityPost,
+    reactToPost,
     addPostComment,
     startPrivateChatWithUser,
-    addNotification,
+    openMarketplaceToCommodity,
+    submitModerationReport,
+    requestedCommunityView,
+    setRequestedCommunityView,
     nvatReport,
+    nvatArchive,
+    selectedNvatDate,
+    setSelectedNvatDate,
     publishStructuredNvatBulletin,
-    environmentMode,
+    exportCurrentBulletinToSheets,
+    addNotification,
     t,
   } = useApp();
 
-  // Active view: 'feed' (Facebook-style wall) or 'bulletins' (NVAT market price ingestion)
   const [activeView, setActiveView] = useState<'feed' | 'bulletins'>('feed');
+
+  useEffect(() => {
+    if (requestedCommunityView) {
+      setActiveView(requestedCommunityView);
+      setRequestedCommunityView(null);
+    }
+  }, [requestedCommunityView, setRequestedCommunityView]);
 
   // Post composer state
   const [postContent, setPostContent] = useState('');
@@ -53,13 +80,12 @@ export const CommunityChatModule: React.FC = () => {
   const [postImage, setPostImage] = useState<string>('');
   const [selectedFeedFilter, setSelectedFeedFilter] = useState<string>('ALL');
 
-  // Comments open state per post
   const [expandedComments, setExpandedComments] = useState<Record<string, boolean>>({
     'post-01': true,
   });
   const [commentInputs, setCommentInputs] = useState<Record<string, string>>({});
 
-  // User Profile Inspection Modal (opened when clicking author avatar or name)
+  // User Profile Inspection Modal
   const [inspectedUser, setInspectedUser] = useState<{
     id: string;
     name: string;
@@ -67,16 +93,27 @@ export const CommunityChatModule: React.FC = () => {
     avatar: string;
     coverPhoto?: string;
     municipality: string;
-    barangay?: string;
-    phone?: string;
     bio?: string;
     verified?: boolean;
   } | null>(null);
 
+  // Moderation Report Modal
+  const [reportTarget, setReportTarget] = useState<{
+    targetType: ModerationReport['targetType'];
+    targetId: string;
+    targetUserId: string;
+    targetUserName: string;
+    targetPreview: string;
+  } | null>(null);
+  const [reportReason, setReportReason] = useState('');
+
+  // Google Sheets OAuth confirmation dialog
+  const [isSheetsConfirmOpen, setIsSheetsConfirmOpen] = useState(false);
+  const [isExportingSheets, setIsExportingSheets] = useState(false);
+
   // Raw bulletin ingestion state
   const [rawNvatInput, setRawNvatInput] = useState('');
   const [isAiStructuring, setIsAiStructuring] = useState(false);
-  const [stagedItems, setStagedItems] = useState<NvatMarketItem[]>([]);
 
   const handleCreatePost = (e: React.FormEvent) => {
     e.preventDefault();
@@ -96,10 +133,47 @@ export const CommunityChatModule: React.FC = () => {
     setExpandedComments((prev) => ({ ...prev, [postId]: true }));
   };
 
+  const handleConfirmSheetsExport = async () => {
+    setIsExportingSheets(true);
+    try {
+      await exportCurrentBulletinToSheets(nvatReport);
+      setIsSheetsConfirmOpen(false);
+    } catch (err) {
+      addNotification(
+        err instanceof Error
+          ? err.message
+          : 'Google Sheets export requires completing the Google authorization popup.',
+        'alert'
+      );
+    } finally {
+      setIsExportingSheets(false);
+    }
+  };
+
+  const handleReportSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!reportTarget || !reportReason.trim()) return;
+    submitModerationReport({
+      ...reportTarget,
+      reason: reportReason.trim(),
+    });
+    setReportTarget(null);
+    setReportReason('');
+  };
+
   const filteredPosts = communityPosts.filter((post) => {
     if (selectedFeedFilter === 'ALL') return true;
     return post.category === selectedFeedFilter;
   });
+
+  const inspectedAccountRecord = inspectedUser
+    ? accounts.find((a) => a.id === inspectedUser.id)
+    : undefined;
+  const inspectedUserCommodities = inspectedUser
+    ? commodities.filter(
+        (c) => c.supplierId === inspectedUser.id && c.verificationStatus !== 'REJECTED'
+      )
+    : [];
 
   return (
     <div className="space-y-6 pb-16 text-left animate-fade-in max-w-5xl mx-auto">
@@ -114,7 +188,7 @@ export const CommunityChatModule: React.FC = () => {
             Producers & Buyers Community Wall
           </h2>
           <p className="text-xs text-neutral-600 font-medium max-w-2xl mt-1">
-            Real-time harvest updates, pest concerns, trading requests, and direct private negotiations
+            Harvest updates, multi-reaction discussions, clickable producer profiles, and NVAT historical bulletins
           </p>
         </div>
 
@@ -148,7 +222,6 @@ export const CommunityChatModule: React.FC = () => {
       {/* VIEW 1: FACEBOOK-STYLE COMMUNITY SOCIAL FEED */}
       {activeView === 'feed' && (
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Feed Column (2 cols) */}
           <div className="lg:col-span-2 space-y-5">
             {/* Post Composer Card */}
             <div className="p-5 rounded-3xl bg-white border-2 border-[#91EAAF] shadow-md space-y-3">
@@ -171,7 +244,6 @@ export const CommunityChatModule: React.FC = () => {
                     className="w-full p-3 text-xs rounded-2xl border border-neutral-200 bg-neutral-50 focus:bg-white focus:outline-none focus:border-[#4D7111] transition-colors leading-relaxed"
                   />
 
-                  {/* Image Preview if uploaded */}
                   {postImage && (
                     <div className="relative rounded-2xl overflow-hidden border border-neutral-200 max-h-48 w-fit">
                       <img src={postImage} alt="Preview" className="h-40 object-cover rounded-xl" />
@@ -185,7 +257,6 @@ export const CommunityChatModule: React.FC = () => {
                     </div>
                   )}
 
-                  {/* Actions & Category Bar */}
                   <div className="flex flex-wrap items-center justify-between gap-2 pt-2 border-t border-neutral-100">
                     <div className="flex items-center gap-1.5 flex-wrap">
                       <span className="text-[10px] font-bold text-neutral-400">Category:</span>
@@ -287,7 +358,8 @@ export const CommunityChatModule: React.FC = () => {
               </div>
             ) : (
               filteredPosts.map((post) => {
-                const isLikedByMe = currentUser ? post.likes.includes(currentUser.id) : false;
+                const userId = currentUser?.id || 'guest_user';
+                const agg = aggregateReactions(post.reactions, post.likes);
                 const isExpanded = !!expandedComments[post.id];
 
                 return (
@@ -297,7 +369,8 @@ export const CommunityChatModule: React.FC = () => {
                   >
                     {/* Post Author Header */}
                     <div className="flex items-start justify-between gap-3">
-                      <div
+                      <button
+                        type="button"
                         onClick={() =>
                           setInspectedUser({
                             id: post.authorId,
@@ -309,7 +382,7 @@ export const CommunityChatModule: React.FC = () => {
                             verified: true,
                           })
                         }
-                        className="flex items-center gap-3 cursor-pointer group"
+                        className="flex items-center gap-3 cursor-pointer group text-left"
                       >
                         <UserAvatar
                           name={post.authorName}
@@ -320,7 +393,7 @@ export const CommunityChatModule: React.FC = () => {
                         />
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
-                            <h4 className="text-sm font-black text-[#1F4B2C] group-hover:text-emerald-800 transition-colors">
+                            <h4 className="text-sm font-black text-[#1F4B2C] group-hover:underline">
                               {post.authorName}
                             </h4>
                             <span className="px-2 py-0.2 rounded-full text-[9px] font-black uppercase bg-[#1F4B2C] text-[#C3E956]">
@@ -332,11 +405,30 @@ export const CommunityChatModule: React.FC = () => {
                             <span>{post.authorMunicipality}</span> • <span>{post.timestamp}</span>
                           </p>
                         </div>
-                      </div>
+                      </button>
 
-                      <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 text-neutral-700">
-                        {post.category}
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="px-2.5 py-0.5 rounded-full text-[10px] font-bold bg-neutral-100 text-neutral-700">
+                          {post.category}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setReportTarget({
+                              targetType: 'POST',
+                              targetId: post.id,
+                              targetUserId: post.authorId,
+                              targetUserName: post.authorName,
+                              targetPreview: post.content.slice(0, 70),
+                            })
+                          }
+                          className="p-1.5 rounded-full text-neutral-400 hover:text-red-600 hover:bg-red-50 transition-colors"
+                          title="Report post"
+                          aria-label="Report post"
+                        >
+                          <Flag className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
                     </div>
 
                     {/* Post Content */}
@@ -344,7 +436,6 @@ export const CommunityChatModule: React.FC = () => {
                       {post.content}
                     </p>
 
-                    {/* Attached Photo */}
                     {post.imageUrl && (
                       <div className="rounded-2xl overflow-hidden border border-neutral-200 max-h-72">
                         <img
@@ -355,31 +446,55 @@ export const CommunityChatModule: React.FC = () => {
                       </div>
                     )}
 
-                    {/* Post Stats (Likes & Comments counts) */}
-                    <div className="flex items-center justify-between text-[11px] text-neutral-500 pt-2 border-t border-neutral-100">
-                      <span className="flex items-center gap-1 font-bold text-neutral-700">
-                        <Heart className="w-3.5 h-3.5 fill-red-500 text-red-500" />
-                        <span>{post.likes.length} likes</span>
-                      </span>
+                    {/* Multi-Reaction Summary & Comments Count */}
+                    <div className="flex flex-wrap items-center justify-between gap-2 text-[11px] text-neutral-500 pt-2 border-t border-neutral-100">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="font-bold text-neutral-700 mr-1">
+                          {agg.total} reactions
+                        </span>
+                        {REACTION_TYPES.filter((r) => agg.counts[r] > 0).map((r) => (
+                          <span
+                            key={r}
+                            className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full bg-neutral-100 text-[10px] font-bold text-neutral-700"
+                          >
+                            <span>{REACTION_META[r].emoji}</span>
+                            <span>{agg.counts[r]}</span>
+                          </span>
+                        ))}
+                      </div>
                       <span className="font-semibold">{post.comments.length} comments</span>
                     </div>
 
-                    {/* Action Buttons: Like | Comment | Direct Private Message */}
-                    <div className="grid grid-cols-3 gap-2 pt-1 border-t border-neutral-100 text-xs font-bold">
-                      <button
-                        onClick={() => likeCommunityPost(post.id)}
-                        className={`py-2 rounded-xl flex items-center justify-center gap-1.5 transition-all ${
-                          isLikedByMe
-                            ? 'bg-red-50 text-red-600 font-black'
-                            : 'text-neutral-600 hover:bg-neutral-100'
-                        }`}
-                      >
-                        <Heart
-                          className={`w-4 h-4 ${isLikedByMe ? 'fill-red-500 text-red-500' : ''}`}
-                        />
-                        <span>{isLikedByMe ? 'Liked' : 'Like'}</span>
-                      </button>
+                    {/* 5-Reaction Interactive Picker Bar */}
+                    <div className="flex flex-wrap items-center gap-1.5 pt-1">
+                      {REACTION_TYPES.map((rType) => {
+                        const meta = REACTION_META[rType];
+                        const isMine =
+                          post.reactions?.[rType]?.includes(userId) ||
+                          (rType === 'heart' && !post.reactions && post.likes.includes(userId));
+                        return (
+                          <button
+                            key={rType}
+                            type="button"
+                            onClick={() => reactToPost(post.id, rType)}
+                            className={`px-2.5 py-1 rounded-full border text-[11px] font-bold flex items-center gap-1 transition-all ${
+                              isMine
+                                ? `${meta.pillClass} shadow-xs scale-105`
+                                : 'bg-white border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+                            }`}
+                          >
+                            <span>{meta.emoji}</span>
+                            <span>{meta.label}</span>
+                            {agg.counts[rType] > 0 && (
+                              <span className="font-mono text-[10px]">({agg.counts[rType]})</span>
+                            )}
+                          </button>
+                        );
+                      })}
+                    </div>
 
+                    {/* Comment & Private Message Row */}
+                    <div className="grid grid-cols-2 gap-2 pt-2 border-t border-neutral-100 text-xs font-bold">
                       <button
                         onClick={() =>
                           setExpandedComments((prev) => ({
@@ -390,7 +505,7 @@ export const CommunityChatModule: React.FC = () => {
                         className="py-2 rounded-xl text-neutral-600 hover:bg-neutral-100 flex items-center justify-center gap-1.5 transition-colors"
                       >
                         <MessageSquare className="w-4 h-4 text-emerald-700" />
-                        <span>Comment</span>
+                        <span>Comments ({post.comments.length})</span>
                       </button>
 
                       <button
@@ -412,7 +527,6 @@ export const CommunityChatModule: React.FC = () => {
                     {/* Comments Section */}
                     {isExpanded && (
                       <div className="pt-3 border-t border-neutral-100 space-y-3">
-                        {/* New Comment Input */}
                         <div className="flex items-center gap-2">
                           <UserAvatar
                             name={currentUser?.name || 'You'}
@@ -447,7 +561,6 @@ export const CommunityChatModule: React.FC = () => {
                           </button>
                         </div>
 
-                        {/* List of Comments */}
                         {post.comments.length > 0 && (
                           <div className="space-y-2 pl-2 border-l-2 border-neutral-200">
                             {post.comments.map((comment) => (
@@ -456,7 +569,8 @@ export const CommunityChatModule: React.FC = () => {
                                 className="p-2.5 rounded-2xl bg-neutral-50 text-xs space-y-1"
                               >
                                 <div className="flex items-center justify-between">
-                                  <div
+                                  <button
+                                    type="button"
                                     onClick={() =>
                                       setInspectedUser({
                                         id: comment.authorId,
@@ -466,7 +580,7 @@ export const CommunityChatModule: React.FC = () => {
                                         municipality: 'Nueva Vizcaya',
                                       })
                                     }
-                                    className="flex items-center gap-2 cursor-pointer group"
+                                    className="flex items-center gap-2 cursor-pointer group text-left"
                                   >
                                     <UserAvatar
                                       name={comment.authorName}
@@ -481,10 +595,28 @@ export const CommunityChatModule: React.FC = () => {
                                     <span className="text-[9px] px-1.5 py-0.2 rounded-xs bg-neutral-200 text-neutral-700">
                                       {comment.authorRole}
                                     </span>
+                                  </button>
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] text-neutral-400">
+                                      {comment.timestamp}
+                                    </span>
+                                    <button
+                                      type="button"
+                                      onClick={() =>
+                                        setReportTarget({
+                                          targetType: 'COMMENT',
+                                          targetId: comment.id,
+                                          targetUserId: comment.authorId,
+                                          targetUserName: comment.authorName,
+                                          targetPreview: comment.text.slice(0, 70),
+                                        })
+                                      }
+                                      className="p-1 rounded-full text-neutral-400 hover:text-red-600"
+                                      title="Report comment"
+                                    >
+                                      <Flag className="w-3 h-3" />
+                                    </button>
                                   </div>
-                                  <span className="text-[10px] text-neutral-400">
-                                    {comment.timestamp}
-                                  </span>
                                 </div>
                                 <p className="text-neutral-700 pl-7 leading-relaxed font-medium">
                                   {comment.text}
@@ -501,9 +633,8 @@ export const CommunityChatModule: React.FC = () => {
             )}
           </div>
 
-          {/* Sidebar Column: Active Agricultural Stakeholders & Live Bulletin Snippet */}
+          {/* Sidebar Column */}
           <div className="space-y-4">
-            {/* Quick Stakeholder Connect Card */}
             <div className="p-5 rounded-3xl bg-white border border-[#91EAAF] shadow-md space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-neutral-100">
                 <h4 className="text-xs font-black uppercase tracking-wider text-[#1F4B2C] flex items-center gap-1.5">
@@ -521,24 +652,21 @@ export const CommunityChatModule: React.FC = () => {
                     id: 'farmer_01',
                     name: 'Mang Ramon Dela Cruz',
                     role: 'Farmer' as StakeholderRole,
-                    municipality: 'Kayapa (Highlands)',
-                    specialty: 'Highland Cabbage & Carrots',
+                    municipality: 'Kayapa',
                     avatar: '',
                   },
                   {
                     id: 'farmer_02',
                     name: 'Aling Teresita Pascual',
                     role: 'Farmer' as StakeholderRole,
-                    municipality: 'Bambang (Lowlands)',
-                    specialty: 'Red Creole Onions & Garlic',
+                    municipality: 'Bambang',
                     avatar: '',
                   },
                   {
                     id: 'coop_01',
-                    name: 'Kasibu Citrus Growers',
+                    name: 'Kasibu Citrus Growers Multipurpose Coop',
                     role: 'Cooperative' as StakeholderRole,
-                    municipality: 'Kasibu Valley',
-                    specialty: 'Satsuma Mandarins & Ponkan',
+                    municipality: 'Kasibu',
                     avatar: '',
                   },
                 ].map((u) => (
@@ -546,7 +674,20 @@ export const CommunityChatModule: React.FC = () => {
                     key={u.id}
                     className="p-2.5 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-center justify-between gap-2"
                   >
-                    <div className="flex items-center gap-2 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setInspectedUser({
+                          id: u.id,
+                          name: u.name,
+                          role: u.role,
+                          avatar: u.avatar,
+                          municipality: u.municipality,
+                          verified: true,
+                        })
+                      }
+                      className="flex items-center gap-2 min-w-0 text-left group"
+                    >
                       <UserAvatar
                         name={u.name}
                         avatar={u.avatar}
@@ -556,10 +697,12 @@ export const CommunityChatModule: React.FC = () => {
                         className="border border-[#91EAAF]"
                       />
                       <div className="min-w-0">
-                        <p className="text-xs font-bold text-[#1F4B2C] truncate">{u.name}</p>
+                        <p className="text-xs font-bold text-[#1F4B2C] truncate group-hover:underline">
+                          {u.name}
+                        </p>
                         <p className="text-[10px] text-neutral-500 truncate">{u.municipality}</p>
                       </div>
-                    </div>
+                    </button>
 
                     <button
                       onClick={() => startPrivateChatWithUser(u)}
@@ -572,13 +715,12 @@ export const CommunityChatModule: React.FC = () => {
               </div>
             </div>
 
-            {/* Prevailing NVAT Pricing Snapshot */}
             <div className="p-5 rounded-3xl bg-gradient-to-br from-[#1F4B2C] to-[#2E6B3E] text-white shadow-md space-y-3">
               <div className="flex items-center justify-between pb-2 border-b border-white/20">
                 <span className="text-xs font-bold text-[#C3E956] uppercase tracking-wider">
                   Prevailing NVAT Bambang
                 </span>
-                <span className="text-[10px] font-mono text-[#91EAAF]">Live Feed</span>
+                <span className="text-[10px] font-mono text-[#91EAAF]">{nvatReport.date}</span>
               </div>
 
               <div className="space-y-1.5 text-xs">
@@ -594,16 +736,69 @@ export const CommunityChatModule: React.FC = () => {
                 onClick={() => setActiveView('bulletins')}
                 className="w-full py-2 rounded-xl bg-white/15 hover:bg-white/25 text-[#F4FFFC] text-xs font-bold text-center transition-colors"
               >
-                Open Full NVAT Market Ledger →
+                Open NVAT Bulletins & Past Dates →
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* VIEW 2: HUMAN-IN-THE-LOOP NVAT PRICE BULLETIN INGESTION */}
+      {/* VIEW 2: NVAT DAILY PRICE BULLETINS + PAST DATES ARCHIVE + GOOGLE SHEETS SYNC */}
       {activeView === 'bulletins' && (
         <div className="space-y-6">
+          {/* Past Dates Archive Selector */}
+          <div className="p-5 rounded-3xl bg-white border-2 border-[#91EAAF] shadow-sm space-y-3">
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+              <div className="flex items-center gap-2 text-xs font-black text-[#1F4B2C]">
+                <Calendar className="w-4 h-4 text-[#4D7111]" />
+                <span>NVAT Daily Bulletins Archive (Select Any Past Date)</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSheetsConfirmOpen(true)}
+                className="px-4 py-2 rounded-xl bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black flex items-center gap-1.5 shadow-xs self-start sm:self-auto"
+              >
+                <FileSpreadsheet className="w-3.5 h-3.5" />
+                <span>Sync Bulletin ({nvatReport.date}) to Google Sheets</span>
+              </button>
+            </div>
+
+            <div className="flex flex-wrap gap-2">
+              {nvatArchive.map((rep) => {
+                const isSelected = rep.date === nvatReport.date;
+                return (
+                  <button
+                    key={rep.id}
+                    type="button"
+                    onClick={() => setSelectedNvatDate(rep.date)}
+                    className={`px-3.5 py-2 rounded-xl text-xs font-bold border transition-all flex items-center gap-1.5 ${
+                      isSelected
+                        ? 'bg-[#1F4B2C] text-[#C3E956] border-[#1F4B2C] shadow-xs'
+                        : 'bg-neutral-50 text-neutral-700 border-neutral-200 hover:bg-neutral-100'
+                    }`}
+                  >
+                    <Calendar className="w-3.5 h-3.5" />
+                    <span>{rep.date}</span>
+                    <span className="text-[10px] opacity-80">({rep.items.length} items)</span>
+                  </button>
+                );
+              })}
+            </div>
+
+            {nvatReport.googleSheetUrl && (
+              <a
+                href={nvatReport.googleSheetUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="inline-flex items-center gap-1.5 text-xs font-bold text-emerald-700 hover:underline"
+              >
+                <ExternalLink className="w-3.5 h-3.5" />
+                <span>Open Exported Google Sheet for {nvatReport.date}</span>
+              </a>
+            )}
+          </div>
+
+          {/* Admin / DA Price Ingestion Panel */}
           <div className="p-6 rounded-3xl bg-white border-2 border-[#91EAAF] shadow-md space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
               <div>
@@ -611,11 +806,11 @@ export const CommunityChatModule: React.FC = () => {
                   Human-in-the-Loop NVAT Market Price Ingestion
                 </h3>
                 <p className="text-xs text-neutral-600 font-medium">
-                  Document intake (PDF, photo, raw bulletin text) with anti-hallucination validation before publishing
+                  Insert NVAT daily bulletin paragraphs to structure and publish to the dated archive
                 </p>
               </div>
               <span className="px-3 py-1 rounded-full bg-[#1F4B2C] text-[#C3E956] text-xs font-black">
-                Official Ingestion Engine
+                Ingestion Engine
               </span>
             </div>
 
@@ -692,11 +887,26 @@ export const CommunityChatModule: React.FC = () => {
             </div>
           </div>
 
-          {/* Current Pinned Standardized Table */}
+          {/* Selected Date Standardized Table */}
           <div className="p-6 rounded-3xl bg-white border border-neutral-200 shadow-md space-y-4">
-            <h4 className="text-sm font-black uppercase tracking-wider text-[#1F4B2C]">
-              Currently Pinned Commodity Benchmarks ({nvatReport.items.length} Commodities)
-            </h4>
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h4 className="text-sm font-black uppercase tracking-wider text-[#1F4B2C]">
+                NVAT Commodity Benchmarks — {nvatReport.date} ({nvatReport.items.length} Commodities)
+              </h4>
+              <span className="text-xs font-semibold text-neutral-500">
+                Source: NVAT Bambang Trading Post
+              </span>
+            </div>
+
+            {nvatReport.executiveSummary.length > 0 && (
+              <ul className="grid grid-cols-1 md:grid-cols-2 gap-2 text-xs text-neutral-700">
+                {nvatReport.executiveSummary.map((line, i) => (
+                  <li key={i} className="p-2.5 rounded-xl bg-[#F4FFFC] border border-[#91EAAF]/60 font-medium">
+                    {line}
+                  </li>
+                ))}
+              </ul>
+            )}
 
             <div className="overflow-x-auto rounded-2xl border border-neutral-200">
               <table className="w-full text-left text-xs">
@@ -704,10 +914,9 @@ export const CommunityChatModule: React.FC = () => {
                   <tr>
                     <th className="p-3">Commodity</th>
                     <th className="p-3">Category</th>
-                    <th className="p-3">Unit</th>
+                    <th className="p-3">Range (₱/kg)</th>
                     <th className="p-3">Prevailing Price</th>
                     <th className="p-3">Type</th>
-                    <th className="p-3">Data Source</th>
                     <th className="p-3">Volume Traded</th>
                     <th className="p-3">Trend</th>
                   </tr>
@@ -717,14 +926,15 @@ export const CommunityChatModule: React.FC = () => {
                     <tr key={item.id} className="hover:bg-neutral-50">
                       <td className="p-3 font-bold text-[#1F4B2C]">{item.commodityName}</td>
                       <td className="p-3">{item.category}</td>
-                      <td className="p-3 font-semibold">{item.unitOfMeasure || 'kg'}</td>
+                      <td className="p-3 font-mono text-neutral-600">
+                        ₱{item.minPricePhp}–₱{item.maxPricePhp}
+                      </td>
                       <td className="p-3 font-bold text-[#4D7111] tabular-nums">₱{item.prevailingPricePhp}/kg</td>
                       <td className="p-3">
                         <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-100 text-emerald-800">
                           {item.priceType || 'Confirmed'}
                         </span>
                       </td>
-                      <td className="p-3 text-neutral-500">{item.originalDataSource || 'NVAT Bambang'}</td>
                       <td className="p-3 tabular-nums">{item.estimatedVolumeTradedTons} MT</td>
                       <td className="p-3 font-bold">{item.marketTrendStatus}</td>
                     </tr>
@@ -736,15 +946,14 @@ export const CommunityChatModule: React.FC = () => {
         </div>
       )}
 
-      {/* USER PROFILE INSPECTION MODAL (When author avatar or name is clicked) */}
+      {/* USER PROFILE INSPECTION MODAL (Includes Posted Commodities clickable to Marketplace) */}
       {inspectedUser && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
-          <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border-2 border-[#91EAAF] overflow-hidden text-left">
-            {/* Cover Photo */}
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in overflow-y-auto">
+          <div className="relative w-full max-w-lg bg-white rounded-3xl shadow-2xl border-2 border-[#91EAAF] overflow-hidden text-left my-8">
             <div className="h-28 bg-gradient-to-r from-[#1F4B2C] to-[#4D7111] relative">
-              {inspectedUser.coverPhoto && (
+              {inspectedAccountRecord?.coverPhoto && (
                 <img
-                  src={inspectedUser.coverPhoto}
+                  src={inspectedAccountRecord.coverPhoto}
                   alt="Cover"
                   className="w-full h-full object-cover opacity-85"
                 />
@@ -757,12 +966,11 @@ export const CommunityChatModule: React.FC = () => {
               </button>
             </div>
 
-            {/* Profile Info */}
             <div className="p-6 pt-0 relative space-y-4">
               <div className="flex items-end justify-between -mt-12 mb-2">
                 <UserAvatar
                   name={inspectedUser.name}
-                  avatar={inspectedUser.avatar}
+                  avatar={inspectedAccountRecord?.avatar || inspectedUser.avatar}
                   role={inspectedUser.role}
                   sizeClass="w-20 h-20"
                   textSizeClass="text-xl"
@@ -774,19 +982,76 @@ export const CommunityChatModule: React.FC = () => {
               </div>
 
               <div>
-                <div className="flex items-center gap-1.5">
-                  <h3 className="text-lg font-black text-[#1F4B2C]">{inspectedUser.name}</h3>
-                  <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-1.5">
+                    <h3 className="text-lg font-black text-[#1F4B2C]">{inspectedUser.name}</h3>
+                    <CheckCircle2 className="w-4 h-4 text-emerald-600 fill-emerald-100" />
+                  </div>
+                  <div className="flex items-center gap-1.5 text-[10px] font-bold">
+                    <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
+                      {inspectedAccountRecord?.completedTradesCount ?? 0} Completed Deals
+                    </span>
+                    <span className="px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700">
+                      {inspectedAccountRecord?.strikeCount ?? 0} Strikes
+                    </span>
+                  </div>
                 </div>
                 <p className="text-xs text-neutral-500 flex items-center gap-1 mt-0.5">
                   <MapPin className="w-3.5 h-3.5 text-[#4D7111]" />
-                  <span>{inspectedUser.municipality}, Nueva Vizcaya</span>
+                  <span>{inspectedAccountRecord?.municipality || inspectedUser.municipality}, Nueva Vizcaya</span>
                 </p>
               </div>
 
               <p className="text-xs text-neutral-600 leading-relaxed font-medium">
-                {inspectedUser.bio || 'Active verified agricultural stakeholder in Nueva Vizcaya.'}
+                {inspectedAccountRecord?.bio ||
+                  inspectedUser.bio ||
+                  'Active verified agricultural stakeholder in Nueva Vizcaya.'}
               </p>
+
+              {/* Supplier's Posted Commodities — Tappable to Jump Directly to Marketplace & Highlight */}
+              <div className="pt-3 border-t border-neutral-100 space-y-2">
+                <h4 className="text-xs font-black uppercase tracking-wider text-[#1F4B2C] flex items-center gap-1.5">
+                  <ShoppingBag className="w-3.5 h-3.5 text-[#4D7111]" />
+                  Posted Commodities ({inspectedUserCommodities.length})
+                </h4>
+
+                {inspectedUserCommodities.length === 0 ? (
+                  <p className="text-xs text-neutral-400 italic">
+                    No active produce listings posted by this stakeholder yet.
+                  </p>
+                ) : (
+                  <div className="space-y-2 max-h-48 overflow-y-auto pr-1">
+                    {inspectedUserCommodities.map((crop) => (
+                      <button
+                        key={crop.id}
+                        type="button"
+                        onClick={() => {
+                          setInspectedUser(null);
+                          openMarketplaceToCommodity(crop.id);
+                        }}
+                        className="w-full p-2.5 rounded-2xl bg-[#F4FFFC] hover:bg-[#C3E956]/30 border border-[#91EAAF] flex items-center justify-between gap-3 text-left transition-colors"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <img
+                            src={crop.imageUrl}
+                            alt={crop.name}
+                            className="w-10 h-10 rounded-xl object-cover shrink-0 border border-neutral-200"
+                          />
+                          <div className="min-w-0">
+                            <p className="text-xs font-black text-[#1F4B2C] truncate">{crop.name}</p>
+                            <p className="text-[10px] text-neutral-600">
+                              {crop.availableKg.toLocaleString()} kg · ₱{crop.pricePerKg}/kg · {crop.qualityGrade}
+                            </p>
+                          </div>
+                        </div>
+                        <span className="px-2.5 py-1 rounded-full bg-[#1F4B2C] text-[#C3E956] text-[10px] font-black shrink-0">
+                          Buy in Market →
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
 
               <div className="pt-3 border-t border-neutral-100 flex gap-2">
                 <button
@@ -804,8 +1069,116 @@ export const CommunityChatModule: React.FC = () => {
                   <Send className="w-3.5 h-3.5 text-[#C3E956]" />
                   <span>Private Message</span>
                 </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    const target = inspectedUser;
+                    setInspectedUser(null);
+                    setReportTarget({
+                      targetType: 'ACCOUNT',
+                      targetId: target.id,
+                      targetUserId: target.id,
+                      targetUserName: target.name,
+                      targetPreview: `${target.role} profile (${target.municipality})`,
+                    });
+                  }}
+                  className="px-3.5 py-2.5 rounded-full border border-red-200 text-red-700 hover:bg-red-50 text-xs font-bold flex items-center gap-1"
+                >
+                  <Flag className="w-3.5 h-3.5" />
+                  <span>Report</span>
+                </button>
               </div>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* GOOGLE SHEETS EXPORT EXPLICIT CONFIRMATION MODAL */}
+      {isSheetsConfirmOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-[#91EAAF] space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+              <h3 className="text-base font-black text-[#1F4B2C] flex items-center gap-2">
+                <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
+                Confirm Export to Google Sheets
+              </h3>
+              <button
+                onClick={() => setIsSheetsConfirmOpen(false)}
+                className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-neutral-600 leading-relaxed font-medium">
+              This will create a new Google Spreadsheet titled{' '}
+              <strong>AgriMatch NV - NVAT Daily Commodity Bulletin ({nvatReport.date})</strong>{' '}
+              in your Google Drive with {nvatReport.items.length} commodity pricing rows and AI executive notes. You may be prompted to authorize Google Sheets access.
+            </p>
+            <div className="flex justify-end gap-2 pt-2">
+              <button
+                type="button"
+                onClick={() => setIsSheetsConfirmOpen(false)}
+                className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-bold text-neutral-600"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                disabled={isExportingSheets}
+                onClick={handleConfirmSheetsExport}
+                className="px-4 py-2 rounded-xl btn-forest text-xs font-black disabled:opacity-50"
+              >
+                {isExportingSheets ? 'Exporting to Google Sheets...' : 'Confirm & Create Sheet'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* MODERATION REPORT MODAL */}
+      {reportTarget && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs">
+          <div className="bg-white rounded-3xl max-w-md w-full p-6 shadow-2xl border-2 border-red-200 space-y-4">
+            <div className="flex items-center justify-between border-b border-neutral-100 pb-3">
+              <h3 className="text-base font-black text-red-800 flex items-center gap-2">
+                <Flag className="w-4 h-4" />
+                Report Content / Stakeholder
+              </h3>
+              <button
+                onClick={() => setReportTarget(null)}
+                className="p-1 rounded-full hover:bg-neutral-100 text-neutral-500"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <p className="text-xs text-neutral-600 font-medium">
+              Reporting <strong>{reportTarget.targetUserName}</strong> ({reportTarget.targetType}): "{reportTarget.targetPreview}"
+            </p>
+            <form onSubmit={handleReportSubmit} className="space-y-3">
+              <textarea
+                rows={3}
+                required
+                value={reportReason}
+                onChange={(e) => setReportReason(e.target.value)}
+                placeholder="State reason for Master Admin review..."
+                className="w-full p-3 text-xs rounded-xl border border-neutral-300 focus:outline-none focus:border-red-500"
+              />
+              <div className="flex justify-end gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReportTarget(null)}
+                  className="px-4 py-2 rounded-xl border border-neutral-200 text-xs font-bold text-neutral-600"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black"
+                >
+                  Submit Report
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}

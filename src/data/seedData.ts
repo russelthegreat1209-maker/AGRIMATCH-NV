@@ -11,11 +11,12 @@ import {
   AgentPacket,
   SystemCounters,
   VerificationAuditLog,
+  ModerationReport,
+  AiHistoryEntry,
 } from '../types';
 import { getCropPhotoByName } from './cropAssets';
 
 export const MASTER_ADMIN_EMAIL = 'russelthegreat1209@gmail.com';
-export const MASTER_ADMIN_PASSWORD = 'RusselTheGreat12092009@SagittariusAGRIMATCHNVADMIN';
 
 // 25 Pre-seeded stakeholder accounts
 export const SEED_ACCOUNTS: UserAccount[] = [
@@ -37,6 +38,7 @@ export const SEED_ACCOUNTS: UserAccount[] = [
     status: 'ACTIVE',
     farmOrWarehouseName: 'Dela Cruz Highland Plots',
     rating: 4.9,
+    completedTradesCount: 28,
   },
   {
     id: 'farmer_02',
@@ -55,6 +57,7 @@ export const SEED_ACCOUNTS: UserAccount[] = [
     status: 'ACTIVE',
     farmOrWarehouseName: 'Pascual Onion Fields',
     rating: 4.8,
+    completedTradesCount: 19,
   },
   {
     id: 'farmer_03',
@@ -73,6 +76,7 @@ export const SEED_ACCOUNTS: UserAccount[] = [
     status: 'ACTIVE',
     farmOrWarehouseName: 'Tomas Citrus Valley',
     rating: 5.0,
+    completedTradesCount: 34,
   },
   {
     id: 'farmer_04',
@@ -1482,12 +1486,17 @@ export const SEED_COMMUNITY_POSTS: import('../types').CommunityPost[] = [
     imageUrl: getCropPhotoByName('Highland Cabbage', 'Highland Vegetables'),
     timestamp: '2 hours ago',
     likes: ['buyer_01', 'coop_01', 'admin_master_01'],
+    reactions: {
+      heart: ['buyer_01', 'coop_01'],
+      wow: ['admin_master_01'],
+      care: ['farmer_02'],
+    },
     comments: [
       {
         id: 'c-01',
         postId: 'post-01',
         authorId: 'buyer_01',
-        authorName: 'Engr. Maria Santos',
+        authorName: 'Metro Balintawak Bulk Buyers Corp.',
         authorRole: 'Buyer',
         authorAvatar: '',
         text: 'Mang Ramon, how many crates can you dispatch to Bambang Terminal tomorrow by 6:00 AM?',
@@ -1509,8 +1518,8 @@ export const SEED_COMMUNITY_POSTS: import('../types').CommunityPost[] = [
   },
   {
     id: 'post-02',
-    authorId: 'coop_01',
-    authorName: 'Kasibu Citrus Growers Multipurpose Coop',
+    authorId: 'coop_03',
+    authorName: 'Kasibu Citrus Producers Cooperative',
     authorRole: 'Cooperative',
     authorAvatar: '',
     authorMunicipality: 'Kasibu',
@@ -1519,17 +1528,21 @@ export const SEED_COMMUNITY_POSTS: import('../types').CommunityPost[] = [
     imageUrl: getCropPhotoByName('Satsuma Mandarin Citrus', 'Citrus & Fruits'),
     timestamp: '4 hours ago',
     likes: ['buyer_02', 'farmer_02', 'gov_01'],
+    reactions: {
+      heart: ['buyer_02'],
+      wow: ['farmer_02', 'gov_01'],
+    },
     comments: [
       {
         id: 'c-03',
         postId: 'post-02',
         authorId: 'buyer_02',
-        authorName: 'Antonio "Tony" Sy',
+        authorName: 'Isabela-Vizcaya Supermarket Chain',
         authorRole: 'Buyer',
         authorAvatar: '',
         text: 'Placing a 2.5 MT Satsuma order for our Balintawak and Divisoria cold stores.',
         timestamp: '3 hours ago',
-        likes: ['coop_01'],
+        likes: ['coop_03'],
       },
     ],
   },
@@ -1544,12 +1557,16 @@ export const SEED_COMMUNITY_POSTS: import('../types').CommunityPost[] = [
     content: 'Advisory for Bambang Allium growers: Magat River irrigation canal near Aliaga has scheduled clearing this Friday. Fill holding tanks ahead of maintenance.',
     timestamp: '6 hours ago',
     likes: ['farmer_01', 'gov_02'],
+    reactions: {
+      care: ['farmer_01', 'gov_02'],
+      sad: ['farmer_04'],
+    },
     comments: [
       {
         id: 'c-04',
         postId: 'post-03',
         authorId: 'gov_02',
-        authorName: 'NVAT Daily Market Officer',
+        authorName: 'NVAT Market Intelligence & Price Monitoring Officer',
         authorRole: 'Government',
         authorAvatar: '',
         text: 'NIA Region 2 confirms water flow resumes Saturday at 5:00 AM.',
@@ -1559,3 +1576,141 @@ export const SEED_COMMUNITY_POSTS: import('../types').CommunityPost[] = [
     ],
   },
 ];
+
+// Historical NVAT Daily Bulletin Archive (accessible by date in Community -> NVAT Bulletins)
+export const SEED_NVAT_ARCHIVE: NvatBulletinReport[] = [
+  INITIAL_NVAT_ITEMS,
+  {
+    ...INITIAL_NVAT_ITEMS,
+    id: 'nvat-bulletin-20261110',
+    date: '2026-11-10',
+    processedAt: '2026-11-10T07:00:00Z',
+    rawText: 'NVAT Bambang Daily Price Bulletin (Nov 10): Highland Cabbage averaged Php 38/kg (35 MT traded). Satsuki Tomato traded at Php 42/kg ahead of weekend Manila hauling. Red Creole Onion held steady at Php 102/kg.',
+    items: [
+      {
+        ...INITIAL_NVAT_ITEMS.items[0],
+        id: 'nvat-1110-01',
+        date: '2026-11-10',
+        prevailingPricePhp: 38,
+        previousPricePhp: 40,
+        priceVariancePercent: -5.0,
+        estimatedVolumeTradedTons: 35.0,
+        marketTrendStatus: 'Declining',
+        lastUpdated: 'Nov 10, 06:00 AM PHT',
+      },
+      {
+        ...INITIAL_NVAT_ITEMS.items[1],
+        id: 'nvat-1110-02',
+        date: '2026-11-10',
+        prevailingPricePhp: 102,
+        previousPricePhp: 100,
+        priceVariancePercent: 2.0,
+        estimatedVolumeTradedTons: 17.0,
+        marketTrendStatus: 'Stable',
+        lastUpdated: 'Nov 10, 06:00 AM PHT',
+      },
+      {
+        ...INITIAL_NVAT_ITEMS.items[2],
+        id: 'nvat-1110-03',
+        date: '2026-11-10',
+        prevailingPricePhp: 42,
+        previousPricePhp: 41,
+        priceVariancePercent: 2.4,
+        estimatedVolumeTradedTons: 20.5,
+        marketTrendStatus: 'Surging',
+        lastUpdated: 'Nov 10, 06:00 AM PHT',
+      },
+      {
+        ...INITIAL_NVAT_ITEMS.items[3],
+        id: 'nvat-1110-04',
+        date: '2026-11-10',
+        prevailingPricePhp: 80,
+        previousPricePhp: 82,
+        priceVariancePercent: -2.4,
+        estimatedVolumeTradedTons: 10.5,
+        marketTrendStatus: 'Stable',
+        lastUpdated: 'Nov 10, 06:00 AM PHT',
+      },
+    ],
+    executiveSummary: [
+      'Nov 10 Highland Cabbage closed at Php 38/kg with 35 MT terminal volume.',
+      'Satsuki Tomato gained +2.4% as supermarket orders ramped up.',
+      'Kasibu Satsuma Citrus initial seasonal crates averaged Php 80/kg.',
+    ],
+  },
+  {
+    ...INITIAL_NVAT_ITEMS,
+    id: 'nvat-bulletin-20261109',
+    date: '2026-11-09',
+    processedAt: '2026-11-09T07:00:00Z',
+    rawText: 'NVAT Bambang Daily Price Bulletin (Nov 09): Highland Cabbage 35/kg, Satsuki Tomato 50/kg, Red Onion 102/kg, Satsuma Citrus 76/kg.',
+    items: [
+      {
+        ...INITIAL_NVAT_ITEMS.items[0],
+        id: 'nvat-1109-01',
+        date: '2026-11-09',
+        prevailingPricePhp: 35,
+        previousPricePhp: 36,
+        priceVariancePercent: -2.8,
+        estimatedVolumeTradedTons: 38.0,
+        marketTrendStatus: 'Stable',
+        lastUpdated: 'Nov 09, 06:00 AM PHT',
+      },
+      {
+        ...INITIAL_NVAT_ITEMS.items[2],
+        id: 'nvat-1109-03',
+        date: '2026-11-09',
+        prevailingPricePhp: 50,
+        previousPricePhp: 46,
+        priceVariancePercent: 8.7,
+        estimatedVolumeTradedTons: 22.0,
+        marketTrendStatus: 'Surging',
+        lastUpdated: 'Nov 09, 06:00 AM PHT',
+      },
+    ],
+    executiveSummary: [
+      'Nov 09 report showed Satsuki Tomato climbing +8.7% to Php 50/kg.',
+      'Highland Cabbage inflows from Kayapa reached 38 MT.',
+    ],
+  },
+];
+
+export const SEED_MODERATION_REPORTS: ModerationReport[] = [
+  {
+    id: 'rep-01',
+    targetType: 'COMMODITY',
+    targetId: 'crop_pending_01',
+    targetUserId: 'farmer_01',
+    targetUserName: 'Mang Ramon Dela Cruz',
+    targetPreview: 'Highland Crisp Green Bell Peppers — pending verification',
+    reporterId: 'buyer_01',
+    reporterName: 'Metro Balintawak Bulk Buyers Corp.',
+    reason: 'Requesting photo freshness check prior to bulk crate reservation.',
+    status: 'PENDING',
+    createdAt: '2026-11-11T15:30:00Z',
+  },
+];
+
+export const SEED_AI_HISTORY: AiHistoryEntry[] = [
+  {
+    id: 'ai-hist-01',
+    userId: 'farmer_01',
+    userRole: 'Farmer',
+    agentType: 'Farmer Agent',
+    prompt: 'Classify harvest quality for Scorpio Highland Cabbage in Pingkian, Kayapa',
+    responseSummary: 'Grade A Premium (97% authenticity): Dense crisp heads, aerated field crate capture verified.',
+    poweredByGemini: true,
+    createdAt: '2026-11-11T08:30:00Z',
+  },
+  {
+    id: 'ai-hist-02',
+    userId: 'master_admin',
+    userRole: 'MASTER_ADMIN',
+    agentType: 'Admin Agent',
+    prompt: 'Process NVAT Bambang Daily Price Bulletin (2026-11-11)',
+    responseSummary: 'Extracted 6 verified commodities totaling 119.0 MT inflows.',
+    poweredByGemini: true,
+    createdAt: '2026-11-11T07:05:00Z',
+  },
+];
+

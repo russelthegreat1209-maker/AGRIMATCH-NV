@@ -1,4 +1,14 @@
-import { CropCategory, NvatMarketItem } from '../types';
+import {
+  AgentDomain,
+  BuyerNeedCriteria,
+  CommodityItem,
+  CropCategory,
+  NvatMarketItem,
+  PostReactions,
+  ReactionType,
+  StakeholderRole,
+  UserAccount,
+} from '../types';
 
 /**
  * Calculates the great-circle distance between two GPS coordinates using the Haversine formula.
@@ -247,4 +257,329 @@ export function buildMunicipalGeoPolygon(
   }
   return points;
 }
+
+/**
+ * Role-based Access Control for the 5-Agent AI Suite.
+ * Enforces strict separation:
+ * - MASTER_ADMIN: all 5 (Farmer, Buyer, Supplier, Market, Admin)
+ * - Farmer: Farmer, Supplier, Market
+ * - Buyer: Buyer, Market
+ * - Supplier: Supplier, Market
+ * - Cooperative / Government: Farmer, Buyer, Supplier, Market (Admin locked exclusively to MASTER_ADMIN)
+ */
+export function canAccessAgent(
+  role: StakeholderRole | undefined,
+  agent: AgentDomain
+): boolean {
+  if (!role) return agent === 'Market';
+  if (role === 'MASTER_ADMIN') return true;
+  if (agent === 'Admin') return false;
+  switch (role) {
+    case 'Farmer':
+      return agent === 'Farmer' || agent === 'Supplier' || agent === 'Market';
+    case 'Buyer':
+      return agent === 'Buyer' || agent === 'Market';
+    case 'Supplier':
+      return agent === 'Supplier' || agent === 'Market';
+    case 'Cooperative':
+    case 'Government':
+      return true;
+    default:
+      return agent === 'Market';
+  }
+}
+
+/**
+ * Computes expected delivery ETA combining highway transit duration and harvest/dispatch readiness.
+ */
+export function estimateDeliveryEta(
+  fromLat: number,
+  fromLng: number,
+  toLat: number,
+  toLng: number,
+  harvestLeadDays: number = 0,
+  deliveryMode: string = 'NVAT Bambang Drop-off Bay'
+): { etaLabel: string; totalMinutes: number; distanceKm: number } {
+  const distanceKm = haversineDistanceKm(fromLat, fromLng, toLat, toLng);
+  const driveMins = calculateDrivingTimeMinutes(distanceKm, 40);
+  const dispatchPrepMins =
+    deliveryMode === 'Buyer Farm Pickup'
+      ? 35
+      : deliveryMode === 'Supplier Direct Delivery'
+      ? 55
+      : 45;
+  const totalMinutes = driveMins + dispatchPrepMins + Math.max(0, harvestLeadDays) * 1440;
+
+  if (harvestLeadDays >= 1) {
+    return {
+      etaLabel: `${harvestLeadDays}d ${Math.ceil((driveMins + dispatchPrepMins) / 60)}h (${distanceKm.toFixed(1)} km)`,
+      totalMinutes,
+      distanceKm,
+    };
+  }
+
+  const totalDrivePlusPrep = driveMins + dispatchPrepMins;
+  if (totalDrivePlusPrep < 60) {
+    return {
+      etaLabel: `~${totalDrivePlusPrep} mins (${distanceKm.toFixed(1)} km)`,
+      totalMinutes,
+      distanceKm,
+    };
+  }
+
+  const hrs = Math.floor(totalDrivePlusPrep / 60);
+  const mins = totalDrivePlusPrep % 60;
+  return {
+    etaLabel: `~${hrs}h ${mins}m (${distanceKm.toFixed(1)} km)`,
+    totalMinutes,
+    distanceKm,
+  };
+}
+
+export const NV_COORDS_BY_MUNICIPALITY: Record<string, { lat: number; lng: number }> = {
+  Bambang: { lat: 16.3861, lng: 121.1065 },
+  Bayombong: { lat: 16.4856, lng: 121.1492 },
+  Solano: { lat: 16.5186, lng: 121.1819 },
+  Kayapa: { lat: 16.3025, lng: 120.8614 },
+  Kasibu: { lat: 16.3197, lng: 121.2878 },
+  Aritao: { lat: 16.2969, lng: 121.0336 },
+  Bagabag: { lat: 16.6061, lng: 121.2519 },
+  'Dupax del Sur': { lat: 16.2833, lng: 121.1 },
+  'Dupax del Norte': { lat: 16.305, lng: 121.12 },
+  'Santa Fe': { lat: 16.1583, lng: 120.9389 },
+  Villaverde: { lat: 16.592, lng: 121.21 },
+  Quezon: { lat: 16.49, lng: 121.26 },
+  Ambaguio: { lat: 16.46, lng: 121.02 },
+  'Alfonso Castañeda': { lat: 15.8667, lng: 121.3 },
+  Diadi: { lat: 16.65, lng: 121.36 },
+};
+
+/**
+ * Ranks commodities for a Buyer's need criteria (top matches weighted by proximity, price,
+ * quality grade, verified status, fewer strikes, and completed trades).
+ */
+export function rankCommoditiesForBuyer(
+  commodities: CommodityItem[],
+  accounts: UserAccount[],
+  criteria: BuyerNeedCriteria
+): Array<{
+  commodity: CommodityItem;
+  score: number;
+  distanceKm: number;
+  etaLabel: string;
+  sellerStrikes: number;
+  completedTrades: number;
+  reasons: string[];
+}> {
+  const destCoords =
+    NV_COORDS_BY_MUNICIPALITY[criteria.destinationMunicipality] ||
+    NV_COORDS_BY_MUNICIPALITY.Bambang;
+
+  const query = (criteria.neededSupply || '').trim().toLowerCase();
+
+  return commodities
+    .filter((c) => {
+      const seller = accounts.find((a) => a.id === c.supplierId);
+      if (seller && seller.status === 'BANNED') return false;
+      if (c.verificationStatus === 'REJECTED') return false;
+      if (query) {
+        const matchesName =
+          c.name.toLowerCase().includes(query) ||
+          c.category.toLowerCase().includes(query);
+        if (!matchesName) return false;
+      }
+      if (
+        criteria.preferredGrade !== 'ANY' &&
+        c.qualityGrade !== criteria.preferredGrade
+      ) {
+        return false;
+      }
+      return true;
+    })
+    .map((commodity) => {
+      const seller = accounts.find((a) => a.id === commodity.supplierId);
+      const sellerStrikes = seller?.strikeCount || 0;
+      const completedTrades = seller?.completedTradesCount || 0;
+      const isVerified = commodity.verificationStatus === 'VERIFIED';
+
+      const eta = estimateDeliveryEta(
+        commodity.lat,
+        commodity.lng,
+        destCoords.lat,
+        destCoords.lng,
+        commodity.daysToHarvest || 0,
+        'NVAT Bambang Drop-off Bay'
+      );
+
+      let score = calculateSupplierRecommendationScore({
+        itemPrice: commodity.pricePerKg,
+        benchmarkPrice: commodity.pricePerKg * 1.08,
+        distanceKm: eta.distanceKm,
+        maxDistanceThresholdKm: 90,
+        isVerified,
+        aiAuthenticityScore: commodity.aiAuthenticityScore,
+        availableKg: commodity.availableKg,
+        targetKg: Math.max(1, criteria.targetKg || 100),
+      });
+
+      // Weight reliability: bonus for verified & completed trades, penalty for strikes
+      score += Math.min(8, Math.floor(completedTrades / 5));
+      score -= sellerStrikes * 15;
+      if (commodity.qualityGrade === 'Grade A Premium') score += 4;
+      score = Math.min(100, Math.max(1, Math.round(score)));
+
+      const reasons: string[] = [];
+      if (isVerified) reasons.push('Admin Verified');
+      if (eta.distanceKm <= 25) reasons.push(`Close (${eta.distanceKm.toFixed(1)} km)`);
+      if (sellerStrikes === 0) reasons.push('0 Strikes');
+      if (completedTrades > 0) reasons.push(`${completedTrades} Trades`);
+      if (commodity.qualityGrade === 'Grade A Premium') reasons.push('Grade A');
+
+      return {
+        commodity,
+        score,
+        distanceKm: eta.distanceKm,
+        etaLabel: eta.etaLabel,
+        sellerStrikes,
+        completedTrades,
+        reasons,
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+}
+
+export const REACTION_TYPES: ReactionType[] = ['heart', 'wow', 'sad', 'care', 'angry'];
+
+export function toggleReactionMap(
+  reactions: PostReactions | undefined,
+  userId: string,
+  type: ReactionType
+): PostReactions {
+  const current: PostReactions = {
+    heart: [...(reactions?.heart || [])],
+    wow: [...(reactions?.wow || [])],
+    sad: [...(reactions?.sad || [])],
+    care: [...(reactions?.care || [])],
+    angry: [...(reactions?.angry || [])],
+  };
+
+  const alreadySelected = (current[type] || []).includes(userId);
+  // Remove userId from all reaction buckets so user has one active reaction cleanly
+  for (const rType of REACTION_TYPES) {
+    current[rType] = (current[rType] || []).filter((id) => id !== userId);
+  }
+  if (!alreadySelected) {
+    current[type] = [...(current[type] || []), userId];
+  }
+  return current;
+}
+
+export function aggregateReactions(
+  reactions: PostReactions | undefined,
+  legacyLikes: string[] = []
+): { total: number; counts: Record<ReactionType, number> } {
+  const counts: Record<ReactionType, number> = {
+    heart: reactions?.heart?.length ?? legacyLikes.length,
+    wow: reactions?.wow?.length ?? 0,
+    sad: reactions?.sad?.length ?? 0,
+    care: reactions?.care?.length ?? 0,
+    angry: reactions?.angry?.length ?? 0,
+  };
+  const total =
+    counts.heart + counts.wow + counts.sad + counts.care + counts.angry;
+  return { total, counts };
+}
+
+export function evaluateStrikeAction(
+  currentStrikes: number,
+  action: 'STRIKE_DELETE' | 'BAN_DIRECT' | 'DISMISS'
+): { nextStrikes: number; nextStatus: 'ACTIVE' | 'BANNED'; autoBanned: boolean } {
+  if (action === 'DISMISS') {
+    return {
+      nextStrikes: currentStrikes,
+      nextStatus: currentStrikes >= 3 ? 'BANNED' : 'ACTIVE',
+      autoBanned: false,
+    };
+  }
+  if (action === 'BAN_DIRECT') {
+    return {
+      nextStrikes: Math.max(3, currentStrikes),
+      nextStatus: 'BANNED',
+      autoBanned: true,
+    };
+  }
+  const nextStrikes = currentStrikes + 1;
+  const autoBanned = nextStrikes >= 3;
+  return {
+    nextStrikes,
+    nextStatus: autoBanned ? 'BANNED' : 'ACTIVE',
+    autoBanned,
+  };
+}
+
+const PIE_PALETTE = [
+  '#1F4B2C',
+  '#4D7111',
+  '#82B729',
+  '#C3E956',
+  '#10B981',
+  '#0284C7',
+  '#D97706',
+  '#7C3AED',
+];
+
+export function computeMunicipalSupplyDistribution(
+  commodities: CommodityItem[]
+): Array<{
+  municipality: string;
+  totalKg: number;
+  percentage: number;
+  listingsCount: number;
+  topCrop: string;
+  color: string;
+}> {
+  const byMuni = new Map<
+    string,
+    { totalKg: number; listingsCount: number; topCrop: string; topKg: number }
+  >();
+
+  let grandTotalKg = 0;
+  for (const c of commodities) {
+    if (c.verificationStatus === 'REJECTED') continue;
+    grandTotalKg += c.availableKg;
+    const prev = byMuni.get(c.municipality);
+    if (!prev) {
+      byMuni.set(c.municipality, {
+        totalKg: c.availableKg,
+        listingsCount: 1,
+        topCrop: c.name,
+        topKg: c.availableKg,
+      });
+    } else {
+      const nextKg = prev.totalKg + c.availableKg;
+      const isNewTop = c.availableKg > prev.topKg;
+      byMuni.set(c.municipality, {
+        totalKg: nextKg,
+        listingsCount: prev.listingsCount + 1,
+        topCrop: isNewTop ? c.name : prev.topCrop,
+        topKg: isNewTop ? c.availableKg : prev.topKg,
+      });
+    }
+  }
+
+  return Array.from(byMuni.entries())
+    .map(([municipality, info], idx) => ({
+      municipality,
+      totalKg: info.totalKg,
+      percentage:
+        grandTotalKg > 0
+          ? Math.round((info.totalKg / grandTotalKg) * 1000) / 10
+          : 0,
+      listingsCount: info.listingsCount,
+      topCrop: info.topCrop,
+      color: PIE_PALETTE[idx % PIE_PALETTE.length],
+    }))
+    .sort((a, b) => b.totalKg - a.totalKg);
+}
+
 

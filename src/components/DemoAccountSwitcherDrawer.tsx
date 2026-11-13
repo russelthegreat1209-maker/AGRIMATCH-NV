@@ -11,6 +11,7 @@ export const DemoAccountSwitcherDrawer: React.FC = () => {
     accounts,
     currentUser,
     switchDemoAccount,
+    setIsAdminPasswordModalOpen,
   } = useApp();
 
   const [selectedRoleFilter, setSelectedRoleFilter] = useState<string>('ALL');
@@ -110,8 +111,12 @@ export const DemoAccountSwitcherDrawer: React.FC = () => {
               <div
                 key={acc.id}
                 onClick={() => {
-                  switchDemoAccount(acc.id);
                   setIsDemoSwitcherOpen(false);
+                  if (acc.role === 'MASTER_ADMIN' && currentUser?.role !== 'MASTER_ADMIN') {
+                    setIsAdminPasswordModalOpen(true);
+                  } else {
+                    switchDemoAccount(acc.id);
+                  }
                 }}
                 className={`p-3 rounded-2xl border transition-all cursor-pointer text-left relative flex items-start gap-3 ${
                   isCurrent
@@ -179,17 +184,16 @@ export const DemoAccountSwitcherDrawer: React.FC = () => {
           })}
         </div>
 
-        {/* Quick Master Admin Direct Action */}
         <div className="p-3 border-t border-[#91EAAF]/60 bg-white/70">
           <button
             onClick={() => {
-              switchDemoAccount('master_admin');
               setIsDemoSwitcherOpen(false);
+              setIsAdminPasswordModalOpen(true);
             }}
-            className="w-full py-2.5 px-3 rounded-full btn-sprout text-xs font-black flex items-center justify-center gap-2 shadow-xs"
+            className="w-full py-2.5 px-3 rounded-full btn-forest text-xs font-black flex items-center justify-center gap-2 shadow-xs"
           >
-            <ShieldCheck className="w-4 h-4 text-[#1F4B2C]" />
-            <span>Instant Switch: Master Admin Account</span>
+            <ShieldCheck className="w-4 h-4 text-[#C3E956]" />
+            <span>Master Admin Login (Password Required)</span>
           </button>
         </div>
       </div>

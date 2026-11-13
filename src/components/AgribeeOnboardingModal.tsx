@@ -41,6 +41,7 @@ export const AgribeeOnboardingModal: React.FC = () => {
     isOnboardingOpen,
     setIsOnboardingOpen,
     loginWithCredentials,
+    verifyMasterAdminPassword,
     registerNewAccount,
     addNotification,
   } = useApp();
@@ -98,20 +99,24 @@ export const AgribeeOnboardingModal: React.FC = () => {
     },
   ];
 
-  const handleLoginSubmit = (e: React.FormEvent) => {
+  const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setErrorMessage('');
+    if (email.trim().toLowerCase() === 'russelthegreat1209@gmail.com') {
+      const adminRes = await verifyMasterAdminPassword(password, email);
+      if (adminRes.success) {
+        setIsOnboardingOpen(false);
+      } else {
+        setErrorMessage(adminRes.message || 'Invalid Master Admin password.');
+      }
+      return;
+    }
     const res = loginWithCredentials(email, password);
     if (res.success) {
       setIsOnboardingOpen(false);
     } else {
       setErrorMessage(res.message || 'Login failed. Please check credentials.');
     }
-  };
-
-  const handleQuickMasterAdminFill = () => {
-    setEmail('russelthegreat1209@gmail.com');
-    setPassword('RusselTheGreat12092009@SagittariusAGRIMATCHNVADMIN');
   };
 
   const handleRegisterSubmit = (e: React.FormEvent) => {
@@ -397,19 +402,12 @@ export const AgribeeOnboardingModal: React.FC = () => {
                   </div>
                 </div>
 
-                {/* Exclusive Private Master Admin Gate quick fill button */}
+                {/* Master Admin Restricted Notice */}
                 <div className="p-3 rounded-xl bg-[#1F4B2C]/5 border border-[#91EAAF] flex items-center justify-between text-xs">
                   <div className="flex items-center gap-1.5 text-[#1F4B2C] font-semibold">
                     <ShieldCheck className="w-4 h-4 text-[#4D7111]" />
-                    <span>Master Admin Gate for Panel Defense</span>
+                    <span>Master Admin requires manual password verification</span>
                   </div>
-                  <button
-                    type="button"
-                    onClick={handleQuickMasterAdminFill}
-                    className="px-2.5 py-1 rounded-md bg-[#1F4B2C] text-[#C3E956] text-[10px] font-bold hover:bg-[#275e37]"
-                  >
-                    Fill Admin Secret
-                  </button>
                 </div>
 
                 <button

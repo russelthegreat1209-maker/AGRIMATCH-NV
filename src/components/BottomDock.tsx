@@ -34,9 +34,9 @@ export const BottomDock: React.FC = () => {
   ];
 
   return (
-    <div className="fixed bottom-4 left-1/2 -translate-x-1/2 z-40 w-[96%] max-w-5xl">
+    <div className="fixed bottom-3 sm:bottom-4 left-1/2 -translate-x-1/2 z-40 w-[calc(100vw-16px)] max-w-5xl">
       <nav
-        className="glass-dark w-full px-3 sm:px-6 py-2.5 rounded-full shadow-2xl flex items-center justify-between sm:justify-around gap-1 sm:gap-2 border border-[#C3E956]/40 backdrop-blur-2xl overflow-x-auto no-scrollbar"
+        className="glass-dark w-full px-2 sm:px-6 py-2 sm:py-2.5 rounded-full shadow-2xl flex items-center justify-between sm:justify-around gap-0.5 sm:gap-2 border border-[#C3E956]/40 backdrop-blur-2xl overflow-x-auto no-scrollbar"
         aria-label="Platform navigation dock"
       >
         {navItems.map((item) => {
@@ -47,14 +47,14 @@ export const BottomDock: React.FC = () => {
             <button
               key={item.id}
               onClick={() => navigateToTabWithGuard(item.id)}
-              className={`relative flex-1 flex flex-col sm:flex-row items-center justify-center gap-1 sm:gap-2 px-2.5 sm:px-4 py-2 rounded-full transition-all duration-200 text-xs font-semibold whitespace-nowrap shrink-0 ${
+              className={`relative flex-1 flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-2 px-1.5 sm:px-4 py-1.5 sm:py-2 rounded-full transition-all duration-200 text-xs font-semibold whitespace-nowrap shrink-0 ${
                 isActive
-                  ? 'bg-gradient-to-r from-[#C3E956] to-[#91EAAF] text-[#1F4B2C] shadow-md font-bold scale-[1.03]'
+                  ? 'bg-gradient-to-r from-[#C3E956] to-[#91EAAF] text-[#1F4B2C] shadow-md font-bold sm:scale-[1.03]'
                   : 'text-[#F4FFFC]/85 hover:text-white hover:bg-white/10'
               }`}
             >
-              <Icon className={`w-4 h-4 shrink-0 ${isActive ? 'text-[#1F4B2C]' : 'text-[#91EAAF]'}`} />
-              <span className="text-[10px] sm:text-xs tracking-tight">{item.label}</span>
+              <Icon className={`w-3.5 h-3.5 sm:w-4 sm:h-4 shrink-0 ${isActive ? 'text-[#1F4B2C]' : 'text-[#91EAAF]'}`} />
+              <span className="text-[9px] sm:text-xs tracking-tight">{item.label}</span>
 
               {item.badge && item.badge > 0 ? (
                 <span className="absolute -top-1 right-1 sm:-right-1 w-4 h-4 bg-red-500 text-white rounded-full text-[9px] flex items-center justify-center font-bold">

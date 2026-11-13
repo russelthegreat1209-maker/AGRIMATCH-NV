@@ -1,47 +1,80 @@
-import React, { useState } from 'react';
+import React, { useEffect, useState } from 'react';
 import { useApp } from '../context/AppContext';
-import { CommodityItem, UserAccount } from '../types';
+import { UserAccount } from '../types';
 import {
   ShieldCheck,
   Sparkles,
   CheckCircle2,
   XCircle,
-  Trash2,
   Ban,
   Send,
-  FileText,
   BarChart3,
   TrendingUp,
   PieChart,
-  Layers,
   AlertTriangle,
   RefreshCw,
-  Eye,
   History,
   ClipboardCheck,
+  Database,
+  Flag,
+  Trash2,
+  FileSpreadsheet,
+  Lock,
+  ExternalLink,
 } from 'lucide-react';
+
+interface DbOverviewResponse {
+  configured: boolean;
+  counts?: {
+    users: number;
+    commodities: number;
+    communityPosts: number;
+    orders: number;
+    privateMessages: number;
+    aiHistory: number;
+    nvatBulletins: number;
+    pendingReports: number;
+  };
+  users?: Array<Record<string, unknown>>;
+  commodities?: Array<Record<string, unknown>>;
+  communityPosts?: Array<Record<string, unknown>>;
+  orders?: Array<Record<string, unknown>>;
+  privateMessages?: Array<Record<string, unknown>>;
+  aiHistory?: Array<Record<string, unknown>>;
+  nvatBulletins?: Array<Record<string, unknown>>;
+  moderationReports?: Array<Record<string, unknown>>;
+}
 
 export const MasterAdminModule: React.FC = () => {
   const {
     currentUser,
     accounts,
     commodities,
-    approveCommodity,
-    rejectCommodity,
+    orders,
+    chatMessages,
+    communityPosts,
+    deleteCommunityPost,
     verifyAndBoostCommodity,
     rejectAndWarnCommodity,
-    deleteCommodity,
     toggleBanUser,
     publishAdminAnnouncement,
     processAndPublishNvatBulletin,
     nvatReport,
-    addNotification,
+    nvatArchive,
     verificationAuditLogs,
+    moderationReports,
+    adminResolveReport,
+    aiHistory,
+    exportCurrentBulletinToSheets,
+    setIsAdminPasswordModalOpen,
+    addNotification,
   } = useApp();
 
-  // Active sub-tab
-  const [adminTab, setAdminTab] = useState<'moderation' | 'queue' | 'nvat-ai' | 'audit-trail'>('nvat-ai');
+  const [adminTab, setAdminTab] = useState<
+    'nvat-ai' | 'queue' | 'reports' | 'moderation' | 'audit-trail' | 'db-explorer'
+  >('nvat-ai');
   const [auditFilter, setAuditFilter] = useState<'ALL' | 'APPROVED' | 'REJECTED'>('ALL');
+  const [reportFilter, setReportFilter] = useState<'PENDING' | 'ALL'>('PENDING');
   const [rejectionReasons, setRejectionReasons] = useState<Record<string, string>>({});
 
   // Broadcast announcement form
@@ -55,25 +88,62 @@ export const MasterAdminModule: React.FC = () => {
   const [rawNvatInput, setRawNvatInput] = useState<string>(
     `NVAT Bambang Daily Price Bulletin: Highland cabbage inflows reached 42 metric tons today with prevailing wholesale prices dropping from Php 38/kg to Php 32/kg due to peak harvest in Kayapa. Red onions remained steady at Php 95/kg to Php 110/kg with 18 tons traded, while Satsuki tomatoes surged to Php 55/kg amid strong Metro Manila buyer demand. Satsuma mandarins traded at Php 75/kg average with 12 tons inbound from Kasibu orchards.`
   );
-
   const [isAiProcessing, setIsAiProcessing] = useState(false);
 
-  // If not logged in as Master Admin, show security access notice
+  // Google Sheets sync confirmation dialog
+  const [isSheetsConfirmOpen, setIsSheetsConfirmOpen] = useState(false);
+  const [isExportingSheets, setIsExportingSheets] = useState(false);
+
+  // Database Explorer state
+  const [dbOverview, setDbOverview] = useState<DbOverviewResponse | null>(null);
+  const [isDbLoading, setIsDbLoading] = useState(false);
+  const [dbTableTab, setDbTableTab] = useState<
+    'orders' | 'messages' | 'commodities' | 'posts' | 'ai-history' | 'nvat'
+  >('orders');
+
+  const fetchDatabaseOverview = async () => {
+    setIsDbLoading(true);
+    try {
+      const res = await fetch('/api/db/overview');
+      if (res.ok) {
+        const data = (await res.json()) as DbOverviewResponse;
+        setDbOverview(data);
+      }
+    } catch {
+      // keep session view if offline
+    } finally {
+      setIsDbLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    if (currentUser?.role === 'MASTER_ADMIN' && adminTab === 'db-explorer') {
+      void fetchDatabaseOverview();
+    }
+  }, [currentUser?.role, adminTab]);
+
+  // If not logged in as Master Admin, show password gate button (zero auto-fill)
   if (currentUser?.role !== 'MASTER_ADMIN') {
     return (
       <div className="p-8 glass-light rounded-3xl border-2 border-red-300 max-w-lg mx-auto text-center space-y-4 my-12 animate-fade-in">
         <div className="w-16 h-16 rounded-full bg-red-100 text-red-700 mx-auto flex items-center justify-center">
-          <AlertTriangle className="w-8 h-8" />
+          <Lock className="w-8 h-8" />
         </div>
-        <h3 className="text-xl font-black text-[#1F4B2C]">Master Admin Authentication Required</h3>
-        <p className="text-xs text-neutral-600 font-medium">
-          The Master Admin Command Center and Admin AI Agent are restricted exclusively to the system owner account:
+        <h3 className="text-xl font-black text-[#1F4B2C]">
+          Master Admin Authentication Required
+        </h3>
+        <p className="text-xs text-neutral-600 font-medium leading-relaxed">
+          The Master Admin Command Center, Moderation Queue, and Database Explorer are locked exclusively to:
           <br />
           <code className="text-red-700 font-mono font-bold">russelthegreat1209@gmail.com</code>
         </p>
-        <p className="text-[11px] text-neutral-500">
-          Please use the top-bar Demo Quick-Login Switcher or sign in with your Master Admin credentials.
-        </p>
+        <button
+          onClick={() => setIsAdminPasswordModalOpen(true)}
+          className="px-6 py-3 rounded-full btn-forest text-xs font-black inline-flex items-center gap-2 shadow-md"
+        >
+          <ShieldCheck className="w-4 h-4 text-[#C3E956]" />
+          <span>Authenticate as Master Admin (Password)</span>
+        </button>
       </div>
     );
   }
@@ -81,6 +151,7 @@ export const MasterAdminModule: React.FC = () => {
   const pendingVerificationCrops = commodities.filter(
     (c) => c.verificationStatus === 'PENDING' || (c as any).verificationStatus === 'PENDING_VERIFICATION'
   );
+  const pendingReportsCount = moderationReports.filter((r) => r.status === 'PENDING').length;
 
   const handleBroadcast = (e: React.FormEvent) => {
     e.preventDefault();
@@ -135,94 +206,156 @@ export const MasterAdminModule: React.FC = () => {
     }
   };
 
+  const handleConfirmSheetsExport = async () => {
+    setIsExportingSheets(true);
+    try {
+      await exportCurrentBulletinToSheets(nvatReport);
+      setIsSheetsConfirmOpen(false);
+    } catch {
+      addNotification('Google Sheets authorization was cancelled or could not complete.', 'alert');
+    } finally {
+      setIsExportingSheets(false);
+    }
+  };
+
+  const filteredReports = moderationReports.filter((rep) =>
+    reportFilter === 'PENDING' ? rep.status === 'PENDING' : true
+  );
+
   return (
     <div className="space-y-6 pb-16 text-left animate-fade-in">
       {/* Header Banner */}
-      <div className="glass-dark p-6 sm:p-8 rounded-3xl border-2 border-[#C3E956] shadow-xl flex flex-col md:flex-row items-start md:items-center justify-between gap-4">
+      <div className="glass-dark p-6 sm:p-8 rounded-3xl border-2 border-[#C3E956] shadow-xl flex flex-col xl:flex-row items-start xl:items-center justify-between gap-4">
         <div>
           <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#C3E956] text-[#1F4B2C] text-xs font-black uppercase tracking-wider mb-2">
             <ShieldCheck className="w-4 h-4 text-[#1F4B2C]" />
             Exclusive Master Admin Command Center
           </div>
           <h2 className="text-2xl sm:text-3xl font-black text-[#F4FFFC] tracking-tight">
-            System Governance & Admin AI Engine
+            System Governance, Moderation & Database Control
           </h2>
           <p className="text-xs text-[#91EAAF] font-medium mt-1">
-            Logged in as {currentUser.email} • Full System Owner & Admin Agent Controller
+            Authenticated as {currentUser.email} • Full System Owner & Cloud SQL / Firestore Controller
           </p>
         </div>
 
         {/* Admin Navigation Pills */}
-        <div className="flex bg-white/10 p-1.5 rounded-full border border-white/20 gap-1 overflow-x-auto">
+        <div className="flex flex-wrap bg-white/10 p-1.5 rounded-2xl border border-white/20 gap-1">
           <button
             onClick={() => setAdminTab('nvat-ai')}
-            className={`px-4 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
               adminTab === 'nvat-ai'
                 ? 'bg-[#C3E956] text-[#1F4B2C] shadow-md'
                 : 'text-neutral-300 hover:text-white'
             }`}
           >
             <Sparkles className="w-3.5 h-3.5" />
-            <span>NVAT AI Processor</span>
+            <span>NVAT AI</span>
           </button>
 
           <button
             onClick={() => setAdminTab('queue')}
-            className={`px-4 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
               adminTab === 'queue'
                 ? 'bg-[#C3E956] text-[#1F4B2C] shadow-md'
                 : 'text-neutral-300 hover:text-white'
             }`}
           >
             <CheckCircle2 className="w-3.5 h-3.5" />
-            <span>Verify Crops Queue ({pendingVerificationCrops.length})</span>
+            <span>Verify Crops ({pendingVerificationCrops.length})</span>
           </button>
 
           <button
-            onClick={() => setAdminTab('audit-trail')}
-            className={`px-4 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
-              adminTab === 'audit-trail'
+            onClick={() => setAdminTab('reports')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              adminTab === 'reports'
                 ? 'bg-[#C3E956] text-[#1F4B2C] shadow-md'
                 : 'text-neutral-300 hover:text-white'
             }`}
           >
-            <History className="w-3.5 h-3.5" />
-            <span>Verification Audit Trail ({verificationAuditLogs.length})</span>
+            <Flag className="w-3.5 h-3.5" />
+            <span>Reports Queue ({pendingReportsCount})</span>
           </button>
 
           <button
             onClick={() => setAdminTab('moderation')}
-            className={`px-4 py-2 rounded-full text-xs font-black transition-all flex items-center gap-1.5 whitespace-nowrap ${
+            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
               adminTab === 'moderation'
                 ? 'bg-[#C3E956] text-[#1F4B2C] shadow-md'
                 : 'text-neutral-300 hover:text-white'
             }`}
           >
             <Ban className="w-3.5 h-3.5" />
-            <span>User & Post Moderation</span>
+            <span>Users & Posts</span>
+          </button>
+
+          <button
+            onClick={() => setAdminTab('audit-trail')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              adminTab === 'audit-trail'
+                ? 'bg-[#C3E956] text-[#1F4B2C] shadow-md'
+                : 'text-neutral-300 hover:text-white'
+            }`}
+          >
+            <History className="w-3.5 h-3.5" />
+            <span>Audit Trail ({verificationAuditLogs.length})</span>
+          </button>
+
+          <button
+            onClick={() => setAdminTab('db-explorer')}
+            className={`px-3.5 py-2 rounded-xl text-xs font-black transition-all flex items-center gap-1.5 ${
+              adminTab === 'db-explorer'
+                ? 'bg-[#C3E956] text-[#1F4B2C] shadow-md'
+                : 'text-neutral-300 hover:text-white'
+            }`}
+          >
+            <Database className="w-3.5 h-3.5" />
+            <span>Database Explorer</span>
           </button>
         </div>
       </div>
 
-      {/* 3. NVAT RAW PARAGRAPH-TO-STATISTICS & GRAPHS AI AGENT PANEL */}
+      {/* 1. NVAT AI PROCESSOR & GOOGLE SHEETS SYNC */}
       {adminTab === 'nvat-ai' && (
         <div className="space-y-6">
           <div className="glass-light p-6 rounded-3xl border-2 border-[#91EAAF] shadow-lg space-y-4">
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pb-3 border-b border-neutral-200">
               <div>
                 <h3 className="text-xl font-black text-[#1F4B2C] tracking-tight">
-                  NVAT AI Market Intelligence Processor (Admin Agent)
+                  NVAT AI Market Intelligence Processor
                 </h3>
                 <p className="text-xs text-neutral-600 font-medium">
-                  Paste unstructured paragraphs or daily market notes from Nueva Vizcaya Agricultural Terminal to generate real-time tables & interactive graphs
+                  Paste daily trading notes from NVAT Bambang to generate structured tables, archive past dates, and export to Google Sheets
                 </p>
               </div>
-              <span className="text-xs font-bold px-3 py-1 rounded-full bg-[#1F4B2C] text-[#C3E956] shadow-xs">
-                Gemini Multi-Agent Parser
-              </span>
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => setIsSheetsConfirmOpen(true)}
+                  className="px-4 py-2 rounded-full bg-emerald-700 hover:bg-emerald-800 text-white text-xs font-black flex items-center gap-1.5 shadow-sm transition-colors"
+                >
+                  <FileSpreadsheet className="w-3.5 h-3.5" />
+                  <span>Sync Bulletin to Google Sheets</span>
+                </button>
+              </div>
             </div>
 
-            {/* Rich-Text Input Area */}
+            {nvatReport.googleSheetUrl && (
+              <div className="p-3 rounded-2xl bg-emerald-50 border border-emerald-200 flex items-center justify-between text-xs">
+                <span className="font-bold text-emerald-900">
+                  Latest NVAT Bulletin ({nvatReport.date}) synced to Google Sheets
+                </span>
+                <a
+                  href={nvatReport.googleSheetUrl}
+                  target="_blank"
+                  rel="noreferrer"
+                  className="inline-flex items-center gap-1 font-black text-emerald-800 underline"
+                >
+                  <span>Open Spreadsheet</span>
+                  <ExternalLink className="w-3.5 h-3.5" />
+                </a>
+              </div>
+            )}
+
             <div className="space-y-2">
               <label className="block text-xs font-bold text-[#1F4B2C]">
                 Paste Raw NVAT Daily Price Bulletin Text:
@@ -236,7 +369,6 @@ export const MasterAdminModule: React.FC = () => {
               />
             </div>
 
-            {/* Action Buttons */}
             <div className="flex flex-wrap items-center gap-3">
               <button
                 onClick={handleProcessNvat}
@@ -269,23 +401,22 @@ export const MasterAdminModule: React.FC = () => {
             </div>
           </div>
 
-          {/* GENERATED STRUCTURED STATISTICAL DATA & CHARTS */}
+          {/* LIVE PARSED TABLE & CHARTS */}
           <div className="glass-light p-6 rounded-3xl border border-[#91EAAF] shadow-lg space-y-6">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
               <div>
                 <h4 className="text-base font-black text-[#1F4B2C]">
-                  Live Parsed NVAT Market Data Table
+                  Published NVAT Market Table ({nvatReport.date})
                 </h4>
                 <p className="text-xs text-neutral-500 font-medium">
                   AI extracted commodity pricing metrics & variance ratios
                 </p>
               </div>
               <span className="text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800">
-                Published to Live Dashboards
+                Synced to Community Bulletins
               </span>
             </div>
 
-            {/* Table */}
             <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
               <table className="w-full text-left border-collapse text-xs">
                 <thead>
@@ -298,7 +429,7 @@ export const MasterAdminModule: React.FC = () => {
                     <th className="p-3 font-bold">Previous</th>
                     <th className="p-3 font-bold">Variance (%)</th>
                     <th className="p-3 font-bold">Volume Traded</th>
-                    <th className="p-3 font-bold">Trend Status</th>
+                    <th className="p-3 font-bold">Trend</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100 font-medium">
@@ -320,10 +451,14 @@ export const MasterAdminModule: React.FC = () => {
                               : 'bg-neutral-100 text-neutral-600'
                           }`}
                         >
-                          {item.priceVariancePercent > 0 ? `+${item.priceVariancePercent}%` : `${item.priceVariancePercent}%`}
+                          {item.priceVariancePercent > 0
+                            ? `+${item.priceVariancePercent}%`
+                            : `${item.priceVariancePercent}%`}
                         </span>
                       </td>
-                      <td className="p-3 font-mono text-[#4D7111]">{item.estimatedVolumeTradedTons} MT</td>
+                      <td className="p-3 font-mono text-[#4D7111]">
+                        {item.estimatedVolumeTradedTons} MT
+                      </td>
                       <td className="p-3">
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-black uppercase ${
@@ -343,14 +478,10 @@ export const MasterAdminModule: React.FC = () => {
               </table>
             </div>
 
-            {/* THREE INTERACTIVE STATISTICAL CHARTS */}
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 pt-2">
-              {/* Chart 1: Prevailing vs Previous Price Comparison Bar Graph */}
               <div className="p-4 rounded-2xl bg-white border border-[#91EAAF] shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
-                  <h5 className="text-xs font-bold text-[#1F4B2C]">
-                    1. Prevailing vs Previous Price (PHP/kg)
-                  </h5>
+                  <h5 className="text-xs font-bold text-[#1F4B2C]">1. Prevailing vs Previous Price</h5>
                   <BarChart3 className="w-4 h-4 text-[#4D7111]" />
                 </div>
                 <div className="space-y-2 pt-1">
@@ -358,7 +489,10 @@ export const MasterAdminModule: React.FC = () => {
                     <div key={idx} className="space-y-1">
                       <div className="flex justify-between text-[11px] font-bold text-neutral-700">
                         <span>{d.name}</span>
-                        <span>₱{d.prevailing} <span className="text-neutral-400 font-normal">/ prev ₱{d.previous}</span></span>
+                        <span>
+                          ₱{d.prevailing}{' '}
+                          <span className="text-neutral-400 font-normal">/ prev ₱{d.previous}</span>
+                        </span>
                       </div>
                       <div className="h-3 w-full bg-neutral-100 rounded-full overflow-hidden flex gap-0.5">
                         <div
@@ -375,12 +509,9 @@ export const MasterAdminModule: React.FC = () => {
                 </div>
               </div>
 
-              {/* Chart 2: Commodity Supply Volume Share Donut/Bar Chart */}
               <div className="p-4 rounded-2xl bg-white border border-[#91EAAF] shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
-                  <h5 className="text-xs font-bold text-[#1F4B2C]">
-                    2. Inflow Supply Volume Share (MT)
-                  </h5>
+                  <h5 className="text-xs font-bold text-[#1F4B2C]">2. Inflow Supply Share (MT)</h5>
                   <PieChart className="w-4 h-4 text-[#4D7111]" />
                 </div>
                 <div className="space-y-2 pt-1">
@@ -388,12 +519,14 @@ export const MasterAdminModule: React.FC = () => {
                     <div key={idx} className="space-y-1">
                       <div className="flex justify-between text-[11px] font-bold text-neutral-700">
                         <span>{d.name}</span>
-                        <span className="font-mono text-[#4D7111]">{d.volumeTons} MT ({d.percentage}%)</span>
+                        <span className="font-mono text-[#4D7111]">
+                          {d.volumeTons} MT ({d.percentage}%)
+                        </span>
                       </div>
                       <div className="h-2.5 w-full bg-neutral-100 rounded-full overflow-hidden">
                         <div
                           className="h-full bg-gradient-to-r from-[#4D7111] to-[#C3E956] rounded-full"
-                          style={{ width: `${d.percentage * 2}%` }}
+                          style={{ width: `${Math.min(100, d.percentage * 2)}%` }}
                         />
                       </div>
                     </div>
@@ -401,12 +534,9 @@ export const MasterAdminModule: React.FC = () => {
                 </div>
               </div>
 
-              {/* Chart 3: 7-Day Historical + Projected Price Trend Line Graph */}
               <div className="p-4 rounded-2xl bg-white border border-[#91EAAF] shadow-xs space-y-3">
                 <div className="flex items-center justify-between">
-                  <h5 className="text-xs font-bold text-[#1F4B2C]">
-                    3. 7-Day Trend: Cabbage & Tomato
-                  </h5>
+                  <h5 className="text-xs font-bold text-[#1F4B2C]">3. 7-Day Price Trend</h5>
                   <TrendingUp className="w-4 h-4 text-[#4D7111]" />
                 </div>
                 <div className="h-36 flex items-end justify-between gap-1 pt-3 border-b border-neutral-200">
@@ -415,28 +545,20 @@ export const MasterAdminModule: React.FC = () => {
                       <div className="w-full flex items-end justify-center gap-1 h-24">
                         <div
                           className="w-2.5 bg-[#1F4B2C] rounded-t-xs"
-                          style={{ height: `${(d.cabbage / 60) * 100}%` }}
+                          style={{ height: `${Math.min(100, (d.cabbage / 60) * 100)}%` }}
                           title={`Cabbage: ₱${d.cabbage}`}
                         />
                         <div
                           className="w-2.5 bg-[#C3E956] rounded-t-xs"
-                          style={{ height: `${(d.tomato / 60) * 100}%` }}
+                          style={{ height: `${Math.min(100, (d.tomato / 60) * 100)}%` }}
                           title={`Tomato: ₱${d.tomato}`}
                         />
                       </div>
-                      <span className="text-[9px] font-bold text-neutral-400">{d.date.split(' ')[1]}</span>
+                      <span className="text-[9px] font-bold text-neutral-400">
+                        {d.date.split(' ')[1] || d.date}
+                      </span>
                     </div>
                   ))}
-                </div>
-                <div className="flex items-center justify-center gap-4 text-[10px] font-bold text-neutral-600">
-                  <span className="flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 bg-[#1F4B2C] rounded-xs" />
-                    Highland Cabbage
-                  </span>
-                  <span className="flex items-center gap-1">
-                    <span className="w-2.5 h-2.5 bg-[#C3E956] rounded-xs" />
-                    Satsuki Tomato
-                  </span>
                 </div>
               </div>
             </div>
@@ -450,10 +572,10 @@ export const MasterAdminModule: React.FC = () => {
           <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
             <div>
               <h3 className="text-lg font-black text-[#1F4B2C]">
-                Crop Image Authenticity Verification Queue (AI Vision + Admin Approval)
+                Crop Image Authenticity Verification Queue
               </h3>
               <p className="text-xs text-neutral-600 font-medium">
-                Gemini Vision screening inspecting real farm/crate photography vs internet stock watermarks
+                Inspect AI quality class classifications, manual overrides, and authentic farm photography
               </p>
             </div>
             <span className="text-xs font-bold px-3 py-1 rounded-full bg-amber-100 text-amber-900">
@@ -465,9 +587,6 @@ export const MasterAdminModule: React.FC = () => {
             <div className="p-8 rounded-2xl bg-white/70 border border-neutral-200 text-center text-neutral-500">
               <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
               <p className="text-xs font-bold text-[#1F4B2C]">All crop harvest submissions verified!</p>
-              <p className="text-[11px] text-neutral-500 mt-0.5">
-                New submissions will appear here for Admin AI authenticity approval.
-              </p>
             </div>
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -483,36 +602,40 @@ export const MasterAdminModule: React.FC = () => {
                       className="w-24 h-24 rounded-2xl object-cover border border-neutral-200 shrink-0"
                     />
                     <div className="space-y-1">
-                      <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-900">
-                        {crop.category}
-                      </span>
-                      <h4 className="text-xs font-bold text-[#1F4B2C] leading-snug">
-                        {crop.name}
-                      </h4>
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-amber-100 text-amber-900">
+                          {crop.category}
+                        </span>
+                        {crop.manualGradeOverride && (
+                          <span className="px-2 py-0.5 rounded-full text-[9px] font-black uppercase bg-red-100 text-red-800">
+                            Manual Override Flag
+                          </span>
+                        )}
+                      </div>
+                      <h4 className="text-xs font-bold text-[#1F4B2C] leading-snug">{crop.name}</h4>
                       <p className="text-[11px] text-neutral-600">
                         By {crop.supplierName} • {crop.municipality}
                       </p>
                       <div className="flex items-center gap-2 text-xs font-bold text-[#4D7111]">
-                        <span>{crop.availableKg} kg</span> • <span>₱{crop.pricePerKg}/kg</span>
+                        <span>{crop.availableKg} kg</span> • <span>₱{crop.pricePerKg}/kg</span> •{' '}
+                        <span>{crop.qualityGrade}</span>
                       </div>
                     </div>
                   </div>
 
-                  {/* AI Vision Authenticity Score Box */}
                   <div className="p-3 rounded-xl bg-gradient-to-r from-emerald-50 to-[#F4FFFC] border border-emerald-200 text-xs">
                     <div className="flex items-center justify-between font-bold text-emerald-900 mb-1">
                       <span className="flex items-center gap-1.5">
                         <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
                         AI Vision Authenticity Score:
                       </span>
-                      <span className="font-mono text-sm">{crop.aiAuthenticityScore}% Authentic Farm Capture</span>
+                      <span className="font-mono text-sm">{crop.aiAuthenticityScore}% Authentic</span>
                     </div>
                     <p className="text-[11px] text-emerald-800 leading-tight">
-                      {crop.aiVisionNotes || 'Verified crisp field crate texture, genuine natural outdoor lighting.'}
+                      {crop.aiVisionNotes || 'Verified natural farm lighting and packaging.'}
                     </p>
                   </div>
 
-                  {/* Rejection Reason Selector */}
                   <div className="space-y-1 pt-1 border-t border-neutral-100">
                     <label className="block text-[10px] font-bold text-neutral-500">
                       Rejection Reason Code (if rejecting):
@@ -527,14 +650,21 @@ export const MasterAdminModule: React.FC = () => {
                       }
                       className="w-full px-2.5 py-1.5 text-[11px] rounded-lg border border-neutral-200 bg-neutral-50 font-medium"
                     >
-                      <option value="UNVERIFIED_STOCK_PHOTO">UNVERIFIED_STOCK_PHOTO (Stock/watermarked imagery)</option>
-                      <option value="MISLEADING_PRICING">MISLEADING_PRICING (Deviates heavily from NVAT trading index)</option>
-                      <option value="INSUFFICIENT_FARM_ORIGIN">INSUFFICIENT_FARM_ORIGIN (Unverified municipality / phone)</option>
-                      <option value="QUALITY_MISMATCH">QUALITY_MISMATCH (Produce grade does not match visual state)</option>
+                      <option value="UNVERIFIED_STOCK_PHOTO">
+                        UNVERIFIED_STOCK_PHOTO (Stock/watermarked imagery)
+                      </option>
+                      <option value="MISLEADING_PRICING">
+                        MISLEADING_PRICING (Deviates heavily from NVAT trading index)
+                      </option>
+                      <option value="INSUFFICIENT_FARM_ORIGIN">
+                        INSUFFICIENT_FARM_ORIGIN (Unverified municipality / phone)
+                      </option>
+                      <option value="QUALITY_MISMATCH">
+                        QUALITY_MISMATCH (Produce grade does not match visual state)
+                      </option>
                     </select>
                   </div>
 
-                  {/* Action Buttons: Verify & Boost vs Reject & Issue Warning */}
                   <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
                     <button
                       onClick={() => verifyAndBoostCommodity(crop.id)}
@@ -564,10 +694,129 @@ export const MasterAdminModule: React.FC = () => {
         </div>
       )}
 
-      {/* 1. REAL-TIME USER & POST MODERATION SUITE */}
+      {/* 3. MODERATION REPORTS QUEUE (STRIKE+DELETE AUTO-BAN @ 3 / BAN DIRECTLY / DISMISS) */}
+      {adminTab === 'reports' && (
+        <div className="glass-light p-6 rounded-3xl border border-[#91EAAF] shadow-lg space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-200">
+            <div>
+              <h3 className="text-lg font-black text-[#1F4B2C]">
+                Community & Marketplace Moderation Reports Queue
+              </h3>
+              <p className="text-xs text-neutral-600">
+                Review stakeholder reports on posts, comments, listings, or accounts. Issuing 3 strikes automatically bans the account.
+              </p>
+            </div>
+            <div className="flex bg-neutral-100 p-1 rounded-xl border border-neutral-200 gap-1 text-xs font-bold">
+              <button
+                onClick={() => setReportFilter('PENDING')}
+                className={`px-3 py-1.5 rounded-lg ${
+                  reportFilter === 'PENDING' ? 'bg-[#1F4B2C] text-white' : 'text-neutral-600'
+                }`}
+              >
+                Pending ({pendingReportsCount})
+              </button>
+              <button
+                onClick={() => setReportFilter('ALL')}
+                className={`px-3 py-1.5 rounded-lg ${
+                  reportFilter === 'ALL' ? 'bg-[#1F4B2C] text-white' : 'text-neutral-600'
+                }`}
+              >
+                All Reports ({moderationReports.length})
+              </button>
+            </div>
+          </div>
+
+          {filteredReports.length === 0 ? (
+            <div className="p-8 rounded-2xl bg-white border border-neutral-200 text-center">
+              <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-2" />
+              <p className="text-xs font-bold text-[#1F4B2C]">No pending moderation reports.</p>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {filteredReports.map((rep) => {
+                const targetAccount = accounts.find((a) => a.id === rep.targetUserId);
+                return (
+                  <div
+                    key={rep.id}
+                    className={`p-4 rounded-2xl bg-white border-2 space-y-3 ${
+                      rep.status === 'PENDING' ? 'border-amber-300' : 'border-neutral-200 opacity-85'
+                    }`}
+                  >
+                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className="px-2.5 py-0.5 rounded-full bg-red-100 text-red-800 text-[10px] font-black uppercase">
+                          {rep.targetType} Report
+                        </span>
+                        <span className="text-xs font-black text-[#1F4B2C]">
+                          Target: {rep.targetUserName}
+                        </span>
+                        {targetAccount && (
+                          <span className="px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700 text-[10px] font-bold">
+                            Strikes: {targetAccount.strikeCount || 0}/3 • {targetAccount.status}
+                          </span>
+                        )}
+                      </div>
+                      <span
+                        className={`px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase ${
+                          rep.status === 'PENDING'
+                            ? 'bg-amber-100 text-amber-900'
+                            : rep.status === 'DISMISSED'
+                            ? 'bg-neutral-100 text-neutral-600'
+                            : 'bg-red-100 text-red-800'
+                        }`}
+                      >
+                        {rep.status}
+                      </span>
+                    </div>
+
+                    <div className="p-3 rounded-xl bg-neutral-50 border border-neutral-200 text-xs space-y-1">
+                      <p className="font-bold text-red-800">Reason: {rep.reason}</p>
+                      <p className="text-neutral-600 italic">&ldquo;{rep.targetPreview}&rdquo;</p>
+                      <p className="text-[10px] text-neutral-400">
+                        Reported by {rep.reporterName} • {new Date(rep.createdAt).toLocaleString()}
+                      </p>
+                    </div>
+
+                    {rep.status === 'PENDING' ? (
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          onClick={() => adminResolveReport(rep.id, 'STRIKE_DELETE')}
+                          className="px-4 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-black transition-colors"
+                        >
+                          Strike + Delete + Notify (Auto-Ban @ 3)
+                        </button>
+                        <button
+                          onClick={() => adminResolveReport(rep.id, 'BAN_DIRECT')}
+                          className="px-4 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-white text-xs font-black transition-colors"
+                        >
+                          Ban Account Directly
+                        </button>
+                        <button
+                          onClick={() => adminResolveReport(rep.id, 'DISMISS')}
+                          className="px-4 py-2 rounded-xl border border-neutral-300 bg-white hover:bg-neutral-100 text-neutral-700 text-xs font-bold transition-colors"
+                        >
+                          Dismiss Report
+                        </button>
+                      </div>
+                    ) : (
+                      rep.resolutionAction && (
+                        <p className="text-[11px] font-bold text-[#1F4B2C]">
+                          Resolution: {rep.resolutionAction}
+                        </p>
+                      )
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* 4. USERS & COMMUNITY POSTS MODERATION */}
       {adminTab === 'moderation' && (
         <div className="space-y-6">
-          {/* Official Community & Landing Broadcaster Form */}
+          {/* Official Broadcaster */}
           <div className="glass-light p-6 rounded-3xl border border-[#91EAAF] shadow-md space-y-4">
             <div className="flex items-center justify-between pb-2 border-b border-neutral-200">
               <h3 className="text-base font-black text-[#1F4B2C]">
@@ -630,7 +879,7 @@ export const MasterAdminModule: React.FC = () => {
             </form>
           </div>
 
-          {/* User Moderation Table */}
+          {/* Stakeholder Accounts Governance */}
           <div className="glass-light p-6 rounded-3xl border border-[#91EAAF] shadow-md space-y-4">
             <h3 className="text-base font-black text-[#1F4B2C]">
               Platform Stakeholder Accounts Governance ({accounts.length})
@@ -643,9 +892,9 @@ export const MasterAdminModule: React.FC = () => {
                     <th className="p-3 font-bold">User / Organization</th>
                     <th className="p-3 font-bold">Role</th>
                     <th className="p-3 font-bold">Location</th>
-                    <th className="p-3 font-bold">Strikes Status</th>
-                    <th className="p-3 font-bold">Account</th>
-                    <th className="p-3 font-bold text-right">Moderation Action</th>
+                    <th className="p-3 font-bold">Strikes</th>
+                    <th className="p-3 font-bold">Status</th>
+                    <th className="p-3 font-bold text-right">Action</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-neutral-100">
@@ -665,16 +914,13 @@ export const MasterAdminModule: React.FC = () => {
                         <span
                           className={`px-2 py-0.5 rounded-full text-[10px] font-black ${
                             (acc.strikeCount || 0) >= 3
-                              ? 'bg-red-600 text-white animate-pulse'
-                              : (acc.strikeCount || 0) === 2
-                              ? 'bg-orange-100 text-orange-900 border border-orange-300'
-                              : (acc.strikeCount || 0) === 1
+                              ? 'bg-red-600 text-white'
+                              : (acc.strikeCount || 0) >= 1
                               ? 'bg-amber-100 text-amber-800'
                               : 'bg-neutral-100 text-neutral-600'
                           }`}
                         >
                           Strike {acc.strikeCount || 0}/3
-                          {(acc.strikeCount || 0) >= 3 ? ' (SUSPENDED)' : ''}
                         </span>
                       </td>
                       <td className="p-3">
@@ -708,44 +954,83 @@ export const MasterAdminModule: React.FC = () => {
               </table>
             </div>
           </div>
+
+          {/* Community Posts Management */}
+          <div className="glass-light p-6 rounded-3xl border border-[#91EAAF] shadow-md space-y-4">
+            <h3 className="text-base font-black text-[#1F4B2C]">
+              Community Posts Moderation ({communityPosts.length})
+            </h3>
+            <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-left border-collapse text-xs">
+                <thead>
+                  <tr className="bg-neutral-100 text-[#1F4B2C]">
+                    <th className="p-3 font-bold">Author</th>
+                    <th className="p-3 font-bold">Category</th>
+                    <th className="p-3 font-bold">Content</th>
+                    <th className="p-3 font-bold text-right">Moderation</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {communityPosts.map((post) => (
+                    <tr key={post.id} className="hover:bg-neutral-50">
+                      <td className="p-3 font-bold text-[#1F4B2C] whitespace-nowrap">
+                        {post.authorName}
+                        <span className="block text-[10px] text-neutral-400 font-normal">
+                          {post.authorMunicipality} • {post.timestamp}
+                        </span>
+                      </td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700 text-[10px] font-bold">
+                          {post.category}
+                        </span>
+                      </td>
+                      <td className="p-3 text-neutral-700 max-w-md truncate">{post.content}</td>
+                      <td className="p-3 text-right">
+                        <button
+                          onClick={() => deleteCommunityPost(post.id)}
+                          className="px-3 py-1 rounded-full bg-red-100 hover:bg-red-200 text-red-800 text-[10px] font-black inline-flex items-center gap-1"
+                        >
+                          <Trash2 className="w-3 h-3" />
+                          <span>Delete Post</span>
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
         </div>
       )}
 
-      {/* 4. PERMANENT IMMUTABLE VERIFICATION AUDIT TRAIL */}
+      {/* 5. PERMANENT VERIFICATION AUDIT TRAIL */}
       {adminTab === 'audit-trail' && (
         <div className="glass-light p-6 rounded-3xl border border-[#91EAAF] shadow-lg space-y-5 animate-fade-in">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-200">
             <div>
-              <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-900 text-[10px] font-black uppercase mb-1">
-                <History className="w-3 h-3 text-emerald-700" />
-                Immutable Moderation Ledger
-              </div>
               <h3 className="text-xl font-black text-[#1F4B2C] tracking-tight">
                 Permanent Verification Audit Trail
               </h3>
               <p className="text-xs text-neutral-600 font-medium">
-                Cryptographically tracked decisions logged by Master Admin (<code className="font-mono text-emerald-800 font-bold">russelthegreat1209@gmail.com</code>)
+                Tracked decisions logged by Master Admin (<code className="font-mono text-emerald-800 font-bold">russelthegreat1209@gmail.com</code>)
               </p>
             </div>
 
-            {/* Filter Pills */}
             <div className="flex bg-neutral-100 p-1 rounded-2xl border border-neutral-200 gap-1 text-xs font-bold">
               <button
                 onClick={() => setAuditFilter('ALL')}
                 className={`px-3 py-1.5 rounded-xl transition-all ${
-                  auditFilter === 'ALL'
-                    ? 'bg-[#1F4B2C] text-white shadow-xs'
-                    : 'text-neutral-600 hover:text-neutral-900'
+                  auditFilter === 'ALL' ? 'bg-[#1F4B2C] text-white shadow-xs' : 'text-neutral-600'
                 }`}
               >
-                All Records ({verificationAuditLogs.length})
+                All ({verificationAuditLogs.length})
               </button>
               <button
                 onClick={() => setAuditFilter('APPROVED')}
                 className={`px-3 py-1.5 rounded-xl transition-all ${
                   auditFilter === 'APPROVED'
                     ? 'bg-emerald-700 text-white shadow-xs'
-                    : 'text-neutral-600 hover:text-neutral-900'
+                    : 'text-neutral-600'
                 }`}
               >
                 Approved ({verificationAuditLogs.filter((l) => l.decision === 'APPROVED').length})
@@ -753,9 +1038,7 @@ export const MasterAdminModule: React.FC = () => {
               <button
                 onClick={() => setAuditFilter('REJECTED')}
                 className={`px-3 py-1.5 rounded-xl transition-all ${
-                  auditFilter === 'REJECTED'
-                    ? 'bg-red-700 text-white shadow-xs'
-                    : 'text-neutral-600 hover:text-neutral-900'
+                  auditFilter === 'REJECTED' ? 'bg-red-700 text-white shadow-xs' : 'text-neutral-600'
                 }`}
               >
                 Rejected ({verificationAuditLogs.filter((l) => l.decision === 'REJECTED').length})
@@ -763,30 +1046,6 @@ export const MasterAdminModule: React.FC = () => {
             </div>
           </div>
 
-          {/* Audit Metrics Cards */}
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <div className="p-4 rounded-2xl bg-white border border-neutral-200 shadow-xs">
-              <p className="text-[10px] font-black uppercase tracking-wider text-neutral-400">Total Audited Events</p>
-              <p className="text-2xl font-black text-[#1F4B2C] tabular-nums mt-1">{verificationAuditLogs.length}</p>
-              <p className="text-[10px] text-neutral-500 mt-0.5">Immutable audit history logged</p>
-            </div>
-            <div className="p-4 rounded-2xl bg-emerald-50/70 border border-emerald-200 shadow-xs">
-              <p className="text-[10px] font-black uppercase tracking-wider text-emerald-800">Verified & Boosted</p>
-              <p className="text-2xl font-black text-emerald-900 tabular-nums mt-1">
-                {verificationAuditLogs.filter((l) => l.decision === 'APPROVED').length}
-              </p>
-              <p className="text-[10px] text-emerald-700 mt-0.5">Top-ranked in marketplace search</p>
-            </div>
-            <div className="p-4 rounded-2xl bg-red-50/70 border border-red-200 shadow-xs">
-              <p className="text-[10px] font-black uppercase tracking-wider text-red-800">Rejected & Strike Warnings</p>
-              <p className="text-2xl font-black text-red-900 tabular-nums mt-1">
-                {verificationAuditLogs.filter((l) => l.decision === 'REJECTED').length}
-              </p>
-              <p className="text-[10px] text-red-700 mt-0.5">Fraud prevention policy enforced</p>
-            </div>
-          </div>
-
-          {/* Audit Records Table */}
           <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
             <table className="w-full text-left text-xs">
               <thead className="bg-[#F4FFFC] text-[#1F4B2C] font-black border-b border-neutral-200">
@@ -853,8 +1112,316 @@ export const MasterAdminModule: React.FC = () => {
           <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-[11px] text-amber-900 flex items-center gap-2">
             <ClipboardCheck className="w-4 h-4 text-amber-700 shrink-0" />
             <span>
-              <strong>Defense & Research Compliance:</strong> All verification decisions are permanently committed to session state and audit storage. Rejections incur warnings on the user profile; 3 strikes automatically suspend platform market privileges.
+              All verification decisions commit to session audit storage and Cloud SQL. 3 strikes automatically suspend market privileges.
             </span>
+          </div>
+        </div>
+      )}
+
+      {/* 6. CLOUD SQL & FIREBASE DATABASE EXPLORER */}
+      {adminTab === 'db-explorer' && (
+        <div className="glass-light p-6 rounded-3xl border border-[#91EAAF] shadow-lg space-y-5">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-neutral-200">
+            <div>
+              <h3 className="text-lg font-black text-[#1F4B2C]">
+                Cloud SQL & Firebase Database Explorer
+              </h3>
+              <p className="text-xs text-neutral-600">
+                Inspect transactions, stakeholder private messages, posted commodities, AI history, and archived NVAT bulletins
+              </p>
+            </div>
+            <button
+              onClick={() => void fetchDatabaseOverview()}
+              disabled={isDbLoading}
+              className="px-4 py-2 rounded-full btn-forest text-xs font-black flex items-center gap-1.5"
+            >
+              <RefreshCw className={`w-3.5 h-3.5 text-[#C3E956] ${isDbLoading ? 'animate-spin' : ''}`} />
+              <span>{isDbLoading ? 'Refreshing...' : 'Refresh Cloud SQL'}</span>
+            </button>
+          </div>
+
+          {/* Summary Count Cards */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 lg:grid-cols-6 gap-3">
+            {[
+              { label: 'Accounts', val: Math.max(accounts.length, dbOverview?.counts?.users || 0) },
+              { label: 'Commodities', val: Math.max(commodities.length, dbOverview?.counts?.commodities || 0) },
+              { label: 'Orders', val: Math.max(orders.length, dbOverview?.counts?.orders || 0) },
+              { label: 'Messages', val: Math.max(chatMessages.length, dbOverview?.counts?.privateMessages || 0) },
+              { label: 'AI History', val: Math.max(aiHistory.length, dbOverview?.counts?.aiHistory || 0) },
+              { label: 'NVAT Dates', val: Math.max(nvatArchive.length, dbOverview?.counts?.nvatBulletins || 0) },
+            ].map((card) => (
+              <div key={card.label} className="p-3.5 rounded-2xl bg-white border border-neutral-200">
+                <span className="text-[10px] font-black uppercase text-neutral-400">{card.label}</span>
+                <p className="text-xl font-black text-[#1F4B2C] mt-0.5 tabular-nums">{card.val}</p>
+              </div>
+            ))}
+          </div>
+
+          {/* Sub-table Selector */}
+          <div className="flex flex-wrap gap-1.5">
+            {[
+              { id: 'orders', label: 'Orders & Trades' },
+              { id: 'messages', label: 'Private Messages' },
+              { id: 'commodities', label: 'Commodities' },
+              { id: 'posts', label: 'Community Posts' },
+              { id: 'ai-history', label: 'AI History Ledger' },
+              { id: 'nvat', label: 'NVAT Bulletins Archive' },
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setDbTableTab(t.id as any)}
+                className={`px-3.5 py-1.5 rounded-full text-xs font-black transition-all ${
+                  dbTableTab === t.id
+                    ? 'bg-[#1F4B2C] text-[#C3E956]'
+                    : 'bg-white border border-neutral-200 text-neutral-600 hover:bg-neutral-50'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+
+          {/* Orders Table */}
+          {dbTableTab === 'orders' && (
+            <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-[#1F4B2C] font-black border-b border-neutral-200">
+                  <tr>
+                    <th className="p-3">Order ID</th>
+                    <th className="p-3">Commodity</th>
+                    <th className="p-3">Buyer → Supplier</th>
+                    <th className="p-3">Qty & Total</th>
+                    <th className="p-3">Delivery Mode</th>
+                    <th className="p-3">Status</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {orders.map((ord) => (
+                    <tr key={ord.id} className="hover:bg-neutral-50">
+                      <td className="p-3 font-mono font-bold text-[#1F4B2C]">{ord.id}</td>
+                      <td className="p-3 font-bold">{ord.commodityName}</td>
+                      <td className="p-3 text-neutral-600">
+                        {ord.buyerName} → {ord.supplierName}
+                      </td>
+                      <td className="p-3 font-mono font-bold text-[#4D7111]">
+                        {ord.quantityKg} kg (₱{ord.totalAmountPhp.toLocaleString()})
+                      </td>
+                      <td className="p-3 text-neutral-600">{ord.deliveryMode}</td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                          {ord.status}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Private Messages Table */}
+          {dbTableTab === 'messages' && (
+            <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-[#1F4B2C] font-black border-b border-neutral-200">
+                  <tr>
+                    <th className="p-3">Thread ID</th>
+                    <th className="p-3">Sender</th>
+                    <th className="p-3">Role</th>
+                    <th className="p-3">Message</th>
+                    <th className="p-3">Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {chatMessages.map((msg) => (
+                    <tr key={msg.id} className="hover:bg-neutral-50">
+                      <td className="p-3 font-mono text-[11px] text-neutral-500">{msg.threadId}</td>
+                      <td className="p-3 font-bold text-[#1F4B2C]">{msg.senderName}</td>
+                      <td className="p-3 text-neutral-600">{msg.senderRole}</td>
+                      <td className="p-3 text-neutral-700 max-w-md truncate">{msg.text}</td>
+                      <td className="p-3 text-neutral-400 whitespace-nowrap">
+                        {new Date(msg.timestamp).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Commodities Table */}
+          {dbTableTab === 'commodities' && (
+            <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-[#1F4B2C] font-black border-b border-neutral-200">
+                  <tr>
+                    <th className="p-3">Commodity</th>
+                    <th className="p-3">Supplier</th>
+                    <th className="p-3">Municipality</th>
+                    <th className="p-3">Stock & Price</th>
+                    <th className="p-3">Quality Grade</th>
+                    <th className="p-3">Verification</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {commodities.map((c) => (
+                    <tr key={c.id} className="hover:bg-neutral-50">
+                      <td className="p-3 font-bold text-[#1F4B2C]">{c.name}</td>
+                      <td className="p-3 text-neutral-600">{c.supplierName}</td>
+                      <td className="p-3 text-neutral-600">{c.municipality}</td>
+                      <td className="p-3 font-mono font-bold text-[#4D7111]">
+                        {c.availableKg} kg @ ₱{c.pricePerKg}/kg
+                      </td>
+                      <td className="p-3 text-neutral-700">{c.qualityGrade}</td>
+                      <td className="p-3">
+                        <span className="px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-800 text-[10px] font-black">
+                          {c.verificationStatus}
+                        </span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* Community Posts Table */}
+          {dbTableTab === 'posts' && (
+            <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-[#1F4B2C] font-black border-b border-neutral-200">
+                  <tr>
+                    <th className="p-3">Author</th>
+                    <th className="p-3">Category</th>
+                    <th className="p-3">Content</th>
+                    <th className="p-3">Comments</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {communityPosts.map((p) => (
+                    <tr key={p.id} className="hover:bg-neutral-50">
+                      <td className="p-3 font-bold text-[#1F4B2C]">{p.authorName}</td>
+                      <td className="p-3 text-neutral-600">{p.category}</td>
+                      <td className="p-3 text-neutral-700 max-w-md truncate">{p.content}</td>
+                      <td className="p-3 font-mono font-bold">{p.comments?.length || 0}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* AI History Table */}
+          {dbTableTab === 'ai-history' && (
+            <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-[#1F4B2C] font-black border-b border-neutral-200">
+                  <tr>
+                    <th className="p-3">Agent</th>
+                    <th className="p-3">User Role</th>
+                    <th className="p-3">Prompt</th>
+                    <th className="p-3">Response Summary</th>
+                    <th className="p-3">Timestamp</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {aiHistory.map((h) => (
+                    <tr key={h.id} className="hover:bg-neutral-50">
+                      <td className="p-3 font-bold text-[#1F4B2C] whitespace-nowrap">
+                        {h.agentType}
+                      </td>
+                      <td className="p-3 text-neutral-600">{h.userRole}</td>
+                      <td className="p-3 text-neutral-700 max-w-xs truncate">{h.prompt}</td>
+                      <td className="p-3 text-neutral-600 max-w-md truncate">{h.responseSummary}</td>
+                      <td className="p-3 text-neutral-400 whitespace-nowrap">
+                        {new Date(h.createdAt).toLocaleString()}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {/* NVAT Bulletins Archive Table */}
+          {dbTableTab === 'nvat' && (
+            <div className="overflow-x-auto rounded-2xl border border-neutral-200 bg-white">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-neutral-50 text-[#1F4B2C] font-black border-b border-neutral-200">
+                  <tr>
+                    <th className="p-3">Bulletin Date</th>
+                    <th className="p-3">Commodities Count</th>
+                    <th className="p-3">Executive Summary</th>
+                    <th className="p-3">Google Sheet</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-neutral-100">
+                  {nvatArchive.map((b) => (
+                    <tr key={b.id} className="hover:bg-neutral-50">
+                      <td className="p-3 font-mono font-bold text-[#1F4B2C]">{b.date}</td>
+                      <td className="p-3 font-bold">{b.items.length} commodities</td>
+                      <td className="p-3 text-neutral-700 max-w-md truncate">
+                        {b.executiveSummary[0]}
+                      </td>
+                      <td className="p-3">
+                        {b.googleSheetUrl ? (
+                          <a
+                            href={b.googleSheetUrl}
+                            target="_blank"
+                            rel="noreferrer"
+                            className="text-emerald-700 font-bold underline"
+                          >
+                            Open Sheet
+                          </a>
+                        ) : (
+                          <span className="text-neutral-400">Not synced</span>
+                        )}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+
+          {dbOverview?.configured === false && (
+            <div className="p-3 rounded-2xl bg-amber-50 border border-amber-200 text-xs text-amber-900 flex items-center gap-2">
+              <AlertTriangle className="w-4 h-4 text-amber-700 shrink-0" />
+              <span>
+                Cloud SQL connection pool falls back cleanly to live session records whenever a local environment lacks database credentials.
+              </span>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Google Sheets Export Confirmation Modal */}
+      {isSheetsConfirmOpen && (
+        <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+          <div className="bg-white rounded-3xl border border-[#91EAAF] shadow-2xl max-w-md w-full p-6 space-y-4">
+            <div className="flex items-center gap-2.5 text-[#1F4B2C]">
+              <FileSpreadsheet className="w-5 h-5 text-emerald-700" />
+              <h3 className="text-base font-black">Export NVAT Bulletin to Google Sheets</h3>
+            </div>
+            <p className="text-xs text-neutral-600 leading-relaxed">
+              This will authorize your Google account and create a Google Sheets spreadsheet containing the structured NVAT daily prices for{' '}
+              <span className="font-bold text-[#1F4B2C]">{nvatReport.date}</span> ({nvatReport.items.length} commodities).
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setIsSheetsConfirmOpen(false)}
+                className="flex-1 py-2.5 rounded-xl border border-neutral-300 text-xs font-bold text-neutral-700"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={handleConfirmSheetsExport}
+                disabled={isExportingSheets}
+                className="flex-1 py-2.5 rounded-xl btn-forest text-xs font-black disabled:opacity-50"
+              >
+                {isExportingSheets ? 'Exporting...' : 'Authorize & Export'}
+              </button>
+            </div>
           </div>
         </div>
       )}

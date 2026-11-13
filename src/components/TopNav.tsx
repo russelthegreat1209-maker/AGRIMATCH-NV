@@ -11,6 +11,7 @@ import {
   Info,
   Globe,
   Check,
+  Cpu,
 } from 'lucide-react';
 import { UserAvatar } from './UserAvatar';
 
@@ -104,6 +105,17 @@ export const TopNav: React.FC = () => {
             title="Return to Public Portal"
           >
             <span>{t.publicPortal}</span>
+          </button>
+
+          {/* Agents Quick Access Button */}
+          <button
+            onClick={() => navigateToTabWithGuard('decision-support')}
+            className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#1F4B2C] text-[#C3E956] hover:bg-[#2d6a3e] text-xs font-black shadow-xs transition-colors"
+            title="Open AI Agents Hub"
+            aria-label="Open Agents Hub"
+          >
+            <Cpu className="w-3.5 h-3.5" />
+            <span>Agents</span>
           </button>
 
           {/* Tap to Check Live PAGASA Weather Feed Button */}

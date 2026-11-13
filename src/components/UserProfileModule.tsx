@@ -31,6 +31,7 @@ export const UserProfileModule: React.FC = () => {
     logout,
     updateUserProfile,
     setActiveTab,
+    openMarketplaceToCommodity,
     t,
   } = useApp();
 
@@ -266,9 +267,11 @@ export const UserProfileModule: React.FC = () => {
           ) : (
             <div className="space-y-2 max-h-80 overflow-y-auto pr-1">
               {myCommodities.map((item) => (
-                <div
+                <button
+                  type="button"
                   key={item.id}
-                  className="p-3 rounded-2xl bg-neutral-50 hover:bg-[#F4FFFC] border border-neutral-100 flex items-center justify-between gap-3 text-xs transition-colors"
+                  onClick={() => openMarketplaceToCommodity(item.id)}
+                  className="w-full text-left p-3 rounded-2xl bg-neutral-50 hover:bg-[#F4FFFC] border border-neutral-100 hover:border-[#91EAAF] flex items-center justify-between gap-3 text-xs transition-colors"
                 >
                   <div className="flex items-center gap-3">
                     <img
@@ -288,10 +291,10 @@ export const UserProfileModule: React.FC = () => {
                       ₱{item.pricePerKg}/kg
                     </span>
                     <span className="block text-[10px] text-emerald-700 font-bold">
-                      {item.verificationStatus}
+                      {item.verificationStatus} · View in Market →
                     </span>
                   </div>
-                </div>
+                </button>
               ))}
             </div>
           )}

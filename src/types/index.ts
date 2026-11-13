@@ -27,8 +27,51 @@ export interface UserAccount {
   deliveryCapacityKg?: number;
   rating?: number;
   strikeCount?: number; // 0 to 3 strikes for unverified/fake media violations
+  completedTradesCount?: number;
   warningMessages?: string[];
   coverPhoto?: string; // Customizable cover photo banner
+}
+
+export type ReactionType = 'heart' | 'wow' | 'sad' | 'care' | 'angry';
+
+export type PostReactions = Partial<Record<ReactionType, string[]>>;
+
+export type AgentDomain = 'Farmer' | 'Buyer' | 'Supplier' | 'Market' | 'Admin';
+
+export interface BuyerNeedCriteria {
+  neededSupply: string;
+  neededDate: string;
+  destinationMunicipality: string;
+  preferredGrade: 'ANY' | 'Grade A Premium' | 'Grade B Commercial' | 'Standard Fresh';
+  targetKg: number;
+}
+
+export interface ModerationReport {
+  id: string;
+  targetType: 'POST' | 'COMMENT' | 'COMMODITY' | 'ACCOUNT';
+  targetId: string;
+  targetUserId: string;
+  targetUserName: string;
+  targetPreview: string;
+  reporterId: string;
+  reporterName: string;
+  reason: string;
+  status: 'PENDING' | 'RESOLVED_STRIKE' | 'RESOLVED_BAN' | 'DISMISSED';
+  resolutionAction?: string;
+  createdAt: string;
+  resolvedAt?: string;
+}
+
+export interface AiHistoryEntry {
+  id: string;
+  userId: string;
+  userRole: StakeholderRole;
+  agentType: string;
+  prompt: string;
+  responseSummary: string;
+  metadata?: Record<string, unknown>;
+  poweredByGemini: boolean;
+  createdAt: string;
 }
 
 export interface CommunityPostComment {
@@ -55,6 +98,7 @@ export interface CommunityPost {
   imageUrl?: string;
   timestamp: string;
   likes: string[]; // List of user IDs who liked
+  reactions?: PostReactions;
   comments: CommunityPostComment[];
 }
 
@@ -93,6 +137,8 @@ export interface CommodityItem {
   harvestDate: string; // YYYY-MM-DD
   daysToHarvest?: number;
   qualityGrade: 'Grade A Premium' | 'Grade B Commercial' | 'Standard Fresh';
+  aiSuggestedGrade?: 'Grade A Premium' | 'Grade B Commercial' | 'Standard Fresh';
+  manualGradeOverride?: boolean;
   organicCertified?: boolean;
   notes?: string;
   postedAt: string;
@@ -225,6 +271,7 @@ export interface NvatBulletinReport {
   volumeShareData: { name: string; volumeTons: number; percentage: number }[];
   priceComparisonData: { name: string; prevailing: number; previous: number }[];
   historicalTrendData: { date: string; cabbage: number; tomato: number; onion: number; citrus: number }[];
+  googleSheetUrl?: string;
 }
 
 export interface AdminAnnouncement {
