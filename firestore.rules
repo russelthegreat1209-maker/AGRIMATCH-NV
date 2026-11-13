@@ -1,0 +1,76 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Default deny catch-all
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isSignedIn() && request.auth.uid == userId;
+    }
+
+    function isMasterAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'russelthegreat1209@gmail.com'
+      );
+    }
+
+    // Users Collection
+    match /users/{userId} {
+      allow read: if isSignedIn();
+      allow create, update: if isOwner(userId) || isMasterAdmin();
+      allow delete: if isMasterAdmin();
+    }
+
+    // Real-Time Commodities Collection (Live Mode)
+    match /live_commodities/{commodityId} {
+      allow read: if true; // Public marketplace reading
+      allow create: if isSignedIn();
+      allow update, delete: if isSignedIn() && (
+        resource.data.supplierId == request.auth.uid || isMasterAdmin()
+      );
+    }
+
+    // Real-Time Community Posts Collection (Facebook-style feed)
+    match /live_community_posts/{postId} {
+      allow read: if true;
+      allow create: if isSignedIn();
+      allow update: if isSignedIn() && (
+        resource.data.authorId == request.auth.uid ||
+        // Allow updating likesCount or commentsCount
+        request.resource.data.diff(resource.data).affectedKeys().hasOnly(['likesCount', 'likedBy', 'commentsCount']) ||
+        isMasterAdmin()
+      );
+      allow delete: if isSignedIn() && (
+        resource.data.authorId == request.auth.uid || isMasterAdmin()
+      );
+
+      // Comments subcollection
+      match /comments/{commentId} {
+        allow read: if true;
+        allow create: if isSignedIn();
+        allow update, delete: if isSignedIn() && (
+          resource.data.authorId == request.auth.uid || isMasterAdmin()
+        );
+      }
+    }
+
+    // Real-time Orders & Private Chat
+    match /live_orders/{orderId} {
+      allow read, write: if isSignedIn();
+    }
+
+    match /live_chat_threads/{threadId} {
+      allow read, write: if isSignedIn();
+      match /messages/{messageId} {
+        allow read, write: if isSignedIn();
+      }
+    }
+  }
+}

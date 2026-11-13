@@ -1,0 +1,99 @@
+{
+  "entities": {
+    "UserProfile": {
+      "title": "UserProfile",
+      "description": "User profile with customizable avatar and cover photos",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "email": { "type": "string" },
+        "name": { "type": "string" },
+        "role": { "type": "string" },
+        "avatarUrl": { "type": "string" },
+        "coverPhotoUrl": { "type": "string" },
+        "municipality": { "type": "string" },
+        "barangay": { "type": "string" },
+        "phone": { "type": "string" },
+        "bio": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "email", "name", "role"]
+    },
+    "LiveCommodity": {
+      "title": "LiveCommodity",
+      "description": "Real agricultural commodities posted in live production mode",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string" },
+        "category": { "type": "string" },
+        "municipality": { "type": "string" },
+        "barangay": { "type": "string" },
+        "supplierId": { "type": "string" },
+        "supplierName": { "type": "string" },
+        "availableKg": { "type": "number" },
+        "pricePerKg": { "type": "number" },
+        "farmgatePricePhp": { "type": "number" },
+        "contactPhone": { "type": "string" },
+        "verificationStatus": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "name", "category", "supplierId", "availableKg", "pricePerKg"]
+    },
+    "LiveCommunityPost": {
+      "title": "LiveCommunityPost",
+      "description": "Social feed updates and concerns with comments and likes",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "authorAvatar": { "type": "string" },
+        "authorMunicipality": { "type": "string" },
+        "content": { "type": "string" },
+        "category": { "type": "string" },
+        "imageUrl": { "type": "string" },
+        "likesCount": { "type": "number" },
+        "commentsCount": { "type": "number" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "authorId", "authorName", "content", "createdAt"]
+    },
+    "LivePostComment": {
+      "title": "LivePostComment",
+      "description": "Comments on social community posts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "postId": { "type": "string" },
+        "authorId": { "type": "string" },
+        "authorName": { "type": "string" },
+        "authorRole": { "type": "string" },
+        "authorAvatar": { "type": "string" },
+        "text": { "type": "string" },
+        "createdAt": { "type": "string" }
+      },
+      "required": ["id", "postId", "authorId", "authorName", "text", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "UserProfile",
+      "description": "User account profiles"
+    },
+    "/live_commodities/{commodityId}": {
+      "schema": "LiveCommodity",
+      "description": "Real agricultural commodities posted by verified producers"
+    },
+    "/live_community_posts/{postId}": {
+      "schema": "LiveCommunityPost",
+      "description": "Real community social feed posts"
+    },
+    "/live_community_posts/{postId}/comments/{commentId}": {
+      "schema": "LivePostComment",
+      "description": "Interactive comments on community posts"
+    }
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "name": "AGRIMATCH-NV Platform",
+  "description": "Adaptive Geospatial and Resilient Intelligence for Multi-Agent Tracking in Crop Hubs Across Nueva Vizcaya",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
