@@ -6,6 +6,7 @@ import {
   DeliveryMode,
   PaymentOption,
 } from '../types';
+import { getCropPhotoByName, REAL_CROP_GALLERY } from '../data/cropAssets';
 import {
   Search,
   Filter,
@@ -117,16 +118,15 @@ export const MarketplaceModule: React.FC = () => {
   };
 
   const handleSimulateCameraCapture = () => {
-    // Simulated mobile camera capture
     setIsCameraActive(true);
     setTimeout(() => {
       setUploadedPhotos((prev) => [
         ...prev,
-        '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp',
+        getCropPhotoByName(newCropName, newCropCategory),
       ]);
       setIsCameraActive(false);
-      addNotification('Mobile Camera Photo Captured & Compressed (WebP format)!', 'success');
-    }, 500);
+      addNotification('Farm Photo Captured!', 'success');
+    }, 400);
   };
 
   const handleVideoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -157,7 +157,7 @@ export const MarketplaceModule: React.FC = () => {
       qualityGrade: newQualityGrade,
       organicCertified: newOrganicCertified,
       notes: newCropNotes,
-      imageUrl: uploadedPhotos[0] || '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp',
+      imageUrl: uploadedPhotos[0] || getCropPhotoByName(newCropName, newCropCategory),
       additionalPhotos: uploadedPhotos.slice(1),
       videoUrl: uploadedVideo,
       mediaType: uploadedVideo ? (uploadedPhotos.length > 0 ? 'mixed' : 'video') : 'photo',
@@ -704,8 +704,8 @@ export const MarketplaceModule: React.FC = () => {
                     type="button"
                     onClick={() => {
                       setUploadedPhotos([
-                        '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp',
-                        '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121815_0000_3e33f2ef.webp'
+                        getCropPhotoByName(newCropName || 'Highland Cabbage', newCropCategory),
+                        REAL_CROP_GALLERY[1].url,
                       ]);
                     }}
                     className="py-2.5 px-3 rounded-xl bg-neutral-100 hover:bg-neutral-200 text-[10px] font-bold text-neutral-700"

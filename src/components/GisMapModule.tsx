@@ -1,29 +1,134 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
+import {
+  APIProvider,
+  Map as GoogleMap,
+  AdvancedMarker,
+  useMap,
+} from '@vis.gl/react-google-maps';
 import { useApp } from '../context/AppContext';
-import { UserAccount, CommodityItem } from '../types';
+import { UserAccount } from '../types';
 import {
   haversineDistanceKm,
   formatDistance,
   calculateDrivingTimeMinutes,
+  buildMunicipalGeoPolygon,
 } from '../utils/agriMath';
 import {
   MapPin,
-  Layers,
   Compass,
   Navigation,
   CheckCircle2,
-  ExternalLink,
   MessageSquare,
-  ShoppingBag,
-  Sliders,
-  Sparkles,
-  Phone,
-  Clock,
-  ShieldCheck,
   X,
   Building2,
+  Phone,
 } from 'lucide-react';
 import { NUEVA_VIZCAYA_MUNICIPALITIES, MunicipalBoundary } from '../data/nvMunicipalBoundaries';
+import { UserAvatar } from './UserAvatar';
+
+interface GoogleMapOverlaysProps {
+  showBoundaries: boolean;
+  selectedMunicipality: MunicipalBoundary | null;
+  onSelectMunicipality: (m: MunicipalBoundary | null) => void;
+  userLocation: { lat: number; lng: number; name: string };
+  selectedRadiusKm: number | 'ALL';
+  selectedRoute: {
+    from: { lat: number; lng: number; name: string };
+    to: { lat: number; lng: number; name: string };
+    distanceKm: number;
+    drivingMinutes: number;
+    pathDescription: string;
+  } | null;
+}
+
+const GoogleMapOverlays: React.FC<GoogleMapOverlaysProps> = ({
+  showBoundaries,
+  selectedMunicipality,
+  onSelectMunicipality,
+  userLocation,
+  selectedRadiusKm,
+  selectedRoute,
+}) => {
+  const map = useMap();
+
+  useEffect(() => {
+    if (!map || typeof google === 'undefined' || !google.maps) return;
+    const polygons: google.maps.Polygon[] = [];
+
+    if (showBoundaries) {
+      NUEVA_VIZCAYA_MUNICIPALITIES.forEach((m, idx) => {
+        const isSelected = selectedMunicipality?.id === m.id;
+        const paths = buildMunicipalGeoPolygon(m.centroid, m.areaKm2, idx);
+        const poly = new google.maps.Polygon({
+          paths,
+          strokeColor: isSelected ? '#1F4B2C' : '#2E6B3E',
+          strokeOpacity: isSelected ? 0.95 : 0.65,
+          strokeWeight: isSelected ? 2.5 : 1.3,
+          fillColor: isSelected ? '#4D7111' : '#91EAAF',
+          fillOpacity: isSelected ? 0.38 : 0.16,
+          map,
+          clickable: true,
+        });
+        poly.addListener('click', () => {
+          onSelectMunicipality(isSelected ? null : m);
+        });
+        polygons.push(poly);
+      });
+    }
+
+    return () => {
+      polygons.forEach((p) => p.setMap(null));
+    };
+  }, [map, showBoundaries, selectedMunicipality, onSelectMunicipality]);
+
+  useEffect(() => {
+    if (!map || typeof google === 'undefined' || !google.maps || selectedRadiusKm === 'ALL') return;
+    const radiusMeters = Math.max(100, Number(selectedRadiusKm) * 1000);
+    const circle = new google.maps.Circle({
+      center: { lat: userLocation.lat, lng: userLocation.lng },
+      radius: radiusMeters,
+      strokeColor: '#1F4B2C',
+      strokeOpacity: 0.85,
+      strokeWeight: 2,
+      fillColor: '#91EAAF',
+      fillOpacity: 0.18,
+      map,
+      clickable: false,
+    });
+
+    return () => {
+      circle.setMap(null);
+    };
+  }, [map, userLocation, selectedRadiusKm]);
+
+  useEffect(() => {
+    if (!map || typeof google === 'undefined' || !google.maps || !selectedRoute) return;
+    const midLat = (selectedRoute.from.lat + selectedRoute.to.lat) / 2 + 0.015;
+    const midLng = (selectedRoute.from.lng + selectedRoute.to.lng) / 2;
+    const line = new google.maps.Polyline({
+      path: [
+        { lat: selectedRoute.from.lat, lng: selectedRoute.from.lng },
+        { lat: midLat, lng: midLng },
+        { lat: selectedRoute.to.lat, lng: selectedRoute.to.lng },
+      ],
+      strokeColor: '#1F4B2C',
+      strokeOpacity: 0.95,
+      strokeWeight: 4,
+      map,
+    });
+
+    const bounds = new google.maps.LatLngBounds();
+    bounds.extend({ lat: selectedRoute.from.lat, lng: selectedRoute.from.lng });
+    bounds.extend({ lat: selectedRoute.to.lat, lng: selectedRoute.to.lng });
+    map.fitBounds(bounds, 72);
+
+    return () => {
+      line.setMap(null);
+    };
+  }, [map, selectedRoute]);
+
+  return null;
+};
 
 export const GisMapModule: React.FC = () => {
   const {
@@ -54,6 +159,24 @@ export const GisMapModule: React.FC = () => {
     lng: currentUser?.lng || 121.1065,
     name: currentUser ? `${currentUser.name} (${currentUser.municipality})` : 'Bambang Market Hub',
   });
+
+  const mapsApiKey = import.meta.env.VITE_GOOGLE_MAPS_API_KEY?.trim() || '';
+  const hasValidMapsKey = Boolean(mapsApiKey && mapsApiKey !== 'MY_GOOGLE_MAPS_API_KEY');
+  const [mapsQuotaExceeded, setMapsQuotaExceeded] = useState(false);
+  const [mapEngine, setMapEngine] = useState<'google' | 'vector'>(
+    hasValidMapsKey ? 'google' : 'vector'
+  );
+
+  useEffect(() => {
+    const onQuota = () => {
+      setMapsQuotaExceeded(true);
+      setMapEngine('vector');
+    };
+    window.addEventListener('gmp-quota-exceeded', onQuota);
+    return () => window.removeEventListener('gmp-quota-exceeded', onQuota);
+  }, []);
+
+  const useGoogleMapsEngine = hasValidMapsKey && !mapsQuotaExceeded && mapEngine === 'google';
 
   // 2-Tap State Machine:
   // selectedPreviewPin: 1st tap (preview state)
@@ -201,10 +324,10 @@ export const GisMapModule: React.FC = () => {
         </div>
 
         {/* Map Layer Toggles */}
-        <div className="flex items-center bg-white/80 p-1 rounded-full border border-neutral-200 shadow-xs">
+        <div className="flex items-center bg-white/80 p-1 rounded-full border border-neutral-200 shadow-xs shrink-0">
           <button
             onClick={() => setMapLayer('glass-street')}
-            className={`px-2.5 py-1 text-[11px] font-bold rounded-full transition-all ${
+            className={`px-3 py-1 text-[11px] font-bold rounded-full whitespace-nowrap transition-all ${
               mapLayer === 'glass-street' ? 'bg-[#1F4B2C] text-[#F4FFFC]' : 'text-neutral-600'
             }`}
           >
@@ -212,7 +335,7 @@ export const GisMapModule: React.FC = () => {
           </button>
           <button
             onClick={() => setMapLayer('satellite')}
-            className={`px-2.5 py-1 text-[11px] font-bold rounded-full transition-all ${
+            className={`px-3 py-1 text-[11px] font-bold rounded-full whitespace-nowrap transition-all ${
               mapLayer === 'satellite' ? 'bg-[#1F4B2C] text-[#F4FFFC]' : 'text-neutral-600'
             }`}
           >
@@ -220,7 +343,7 @@ export const GisMapModule: React.FC = () => {
           </button>
           <button
             onClick={() => setMapLayer('terrain')}
-            className={`px-2.5 py-1 text-[11px] font-bold rounded-full transition-all ${
+            className={`px-3 py-1 text-[11px] font-bold rounded-full whitespace-nowrap transition-all ${
               mapLayer === 'terrain' ? 'bg-[#1F4B2C] text-[#F4FFFC]' : 'text-neutral-600'
             }`}
           >
@@ -229,17 +352,28 @@ export const GisMapModule: React.FC = () => {
         </div>
 
         {/* 15 Municipal Boundaries Overlay Toggle */}
-        <button
-          onClick={() => setShowBoundaries(!showBoundaries)}
-          className={`px-3.5 py-1.5 text-xs font-bold rounded-full border transition-all flex items-center gap-1.5 shadow-xs ${
-            showBoundaries
-              ? 'bg-[#1F4B2C] text-[#C3E956] border-[#4D7111]'
-              : 'bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50'
-          }`}
-        >
-          <Building2 className="w-3.5 h-3.5" />
-          <span>15 Municipal Boundaries ({showBoundaries ? 'Active' : 'Off'})</span>
-        </button>
+        <div className="flex flex-wrap items-center gap-2 shrink-0">
+          <button
+            onClick={() => setShowBoundaries(!showBoundaries)}
+            className={`px-3.5 py-1.5 text-xs font-bold rounded-full border whitespace-nowrap transition-all flex items-center gap-1.5 shadow-xs ${
+              showBoundaries
+                ? 'bg-[#1F4B2C] text-[#C3E956] border-[#4D7111]'
+                : 'bg-white text-neutral-600 border-neutral-300 hover:bg-neutral-50'
+            }`}
+          >
+            <Building2 className="w-3.5 h-3.5 shrink-0" />
+            <span>15 Municipal Boundaries ({showBoundaries ? 'Active' : 'Off'})</span>
+          </button>
+
+          {hasValidMapsKey && !mapsQuotaExceeded && (
+            <button
+              onClick={() => setMapEngine(mapEngine === 'google' ? 'vector' : 'google')}
+              className="px-3 py-1.5 text-[11px] font-bold rounded-full border border-[#91EAAF] bg-white text-[#1F4B2C] hover:bg-[#F4FFFC] whitespace-nowrap transition-colors"
+            >
+              {mapEngine === 'google' ? 'Google Maps Live' : 'Vector GIS View'}
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Live Route Telemetry Banner (if route active) */}
@@ -284,112 +418,185 @@ export const GisMapModule: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
         {/* Interactive GIS Spatial Map Canvas */}
         <div className="lg:col-span-3 relative h-[560px] rounded-3xl overflow-hidden border-2 border-[#91EAAF] shadow-xl select-none">
-          {/* Layer Backgrounds */}
-          {mapLayer === 'glass-street' && (
-            <div className="absolute inset-0 bg-[#EBF7F2] bg-[radial-gradient(#91EAAF_1px,transparent_1px)] [background-size:24px_24px]">
-              {/* Mountain ridge silhouettes & Magat River representation */}
-              <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-40" viewBox="0 0 100 100" preserveAspectRatio="none">
-                {/* Magat River blue curve */}
-                <path
-                  d="M 30,100 C 45,70 50,45 65,0"
-                  fill="none"
-                  stroke="#38bdf8"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
+          {useGoogleMapsEngine ? (
+            <APIProvider apiKey={mapsApiKey} libraries={['marker']}>
+              <GoogleMap
+                mapId="DEMO_MAP_ID"
+                defaultCenter={{ lat: 16.3861, lng: 121.1065 }}
+                defaultZoom={10}
+                mapTypeId={
+                  mapLayer === 'satellite'
+                    ? 'hybrid'
+                    : mapLayer === 'terrain'
+                    ? 'terrain'
+                    : 'roadmap'
+                }
+                gestureHandling="greedy"
+                internalUsageAttributionIds={['gmp_mcp_codeassist_v1_aistudio']}
+                className="w-full h-full"
+              >
+                <GoogleMapOverlays
+                  showBoundaries={showBoundaries}
+                  selectedMunicipality={selectedMunicipality}
+                  onSelectMunicipality={setSelectedMunicipality}
+                  userLocation={userLocation}
+                  selectedRadiusKm={selectedRadiusKm}
+                  selectedRoute={selectedRoute}
                 />
-                {/* Highway 26 / Dalton Pass road curve */}
-                <path
-                  d="M 20,95 Q 40,60 55,40 T 70,5"
-                  fill="none"
-                  stroke="#fbbf24"
-                  strokeWidth="1.8"
-                  strokeDasharray="2,2"
-                />
-              </svg>
-            </div>
-          )}
 
-          {mapLayer === 'satellite' && (
-            <div className="absolute inset-0 bg-[#162a1b] bg-[radial-gradient(#275e37_1px,transparent_1px)] [background-size:20px_20px]">
-              <div className="absolute inset-0 bg-gradient-to-t from-[#0e1d13] via-transparent to-[#162a1b]/60" />
-            </div>
-          )}
+                <AdvancedMarker
+                  position={{ lat: userLocation.lat, lng: userLocation.lng }}
+                  title={`My Hub: ${userLocation.name}`}
+                >
+                  <div className="px-2.5 py-1 rounded-full bg-[#1F4B2C] text-[#C3E956] text-[10px] font-black border-2 border-[#C3E956] shadow-lg flex items-center gap-1">
+                    <Navigation className="w-3.5 h-3.5" />
+                    <span>My Hub</span>
+                  </div>
+                </AdvancedMarker>
 
-          {mapLayer === 'terrain' && (
-            <div className="absolute inset-0 bg-[#d8eedf] bg-[radial-gradient(#4D7111_1px,transparent_1px)] [background-size:32px_32px]">
-              <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-amber-700 via-emerald-800 to-transparent" />
-            </div>
-          )}
-
-          {/* Interactive SVG Projection Overlay for Municipal Boundaries, Pins, Geodesic Rings, and Polylines */}
-          <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
-            {/* 15 Real Municipal Boundaries of Nueva Vizcaya */}
-            {showBoundaries && (
-              <g id="municipal-boundaries" className="transition-opacity duration-300">
-                {NUEVA_VIZCAYA_MUNICIPALITIES.map((m) => {
-                  const isSelected = selectedMunicipality?.id === m.id;
-                  const centroid = projectGpsToSvg(m.centroid.lat, m.centroid.lng);
-
+                {visiblePins.map((stakeholder) => {
+                  const isSelected = selectedPreviewPin?.id === stakeholder.id;
+                  const topCrop = stakeholder.userCommodities[0];
                   return (
-                    <g key={m.id} className="group">
-                      <path
-                        d={m.svgPolygon}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedMunicipality(isSelected ? null : m);
-                        }}
-                        fill={isSelected ? 'rgba(77, 113, 17, 0.42)' : 'rgba(145, 234, 175, 0.16)'}
-                        stroke={isSelected ? '#1F4B2C' : 'rgba(31, 75, 44, 0.45)'}
-                        strokeWidth={isSelected ? '1.2' : '0.5'}
-                        strokeLinejoin="round"
-                        className="cursor-pointer hover:fill-[#91EAAF]/40 hover:stroke-[#1F4B2C] transition-all"
-                      />
-                      <text
-                        x={centroid.x}
-                        y={centroid.y}
-                        textAnchor="middle"
-                        dominantBaseline="central"
-                        className="text-[2.6px] font-black fill-[#1F4B2C] pointer-events-none select-none drop-shadow-xs"
-                      >
-                        {m.name}
-                      </text>
-                    </g>
+                    <AdvancedMarker
+                      key={stakeholder.id}
+                      position={{ lat: stakeholder.lat, lng: stakeholder.lng }}
+                      title={`${stakeholder.name} (${stakeholder.municipality})`}
+                      onClick={() => handlePinClick(stakeholder)}
+                    >
+                      <div className="flex flex-col items-center cursor-pointer">
+                        <div
+                          className={`px-2 py-1 rounded-full text-[10px] font-black shadow-md flex items-center gap-1 border transition-all ${
+                            isSelected
+                              ? 'bg-[#1F4B2C] text-[#C3E956] border-[#C3E956] ring-2 ring-[#C3E956] scale-110'
+                              : stakeholder.role === 'Farmer'
+                              ? 'bg-white text-[#1F4B2C] border-[#4D7111]'
+                              : stakeholder.role === 'Supplier'
+                              ? 'bg-amber-50 text-amber-900 border-amber-400'
+                              : stakeholder.role === 'Buyer'
+                              ? 'bg-blue-50 text-blue-900 border-blue-400'
+                              : 'bg-emerald-50 text-emerald-900 border-emerald-400'
+                          }`}
+                        >
+                          <span className="w-2 h-2 rounded-full bg-[#C3E956]" />
+                          <span>{stakeholder.name.split(' ')[0]}</span>
+                          {topCrop && (
+                            <span className="font-mono text-[9px] text-[#4D7111]">
+                              ₱{topCrop.pricePerKg}
+                            </span>
+                          )}
+                        </div>
+                        <div className="w-2.5 h-2.5 bg-[#1F4B2C] rotate-45 -mt-1 border border-white" />
+                      </div>
+                    </AdvancedMarker>
                   );
                 })}
-              </g>
-            )}
+              </GoogleMap>
+            </APIProvider>
+          ) : (
+            <>
+              {/* Layer Backgrounds */}
+              {mapLayer === 'glass-street' && (
+                <div className="absolute inset-0 bg-[#EBF7F2] bg-[radial-gradient(#91EAAF_1px,transparent_1px)] [background-size:24px_24px]">
+                  <svg className="absolute inset-0 w-full h-full pointer-events-none opacity-40" viewBox="0 0 100 100" preserveAspectRatio="none">
+                    <path
+                      d="M 30,100 C 45,70 50,45 65,0"
+                      fill="none"
+                      stroke="#38bdf8"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                    />
+                    <path
+                      d="M 20,95 Q 40,60 55,40 T 70,5"
+                      fill="none"
+                      stroke="#fbbf24"
+                      strokeWidth="1.8"
+                      strokeDasharray="2,2"
+                    />
+                  </svg>
+                </div>
+              )}
 
-            {/* Geodesic Proximity Radius Circle around User Pin */}
-            {selectedRadiusKm !== 'ALL' && (
-              <circle
-                cx={userSvgPos.x}
-                cy={userSvgPos.y}
-                r={Math.min(48, Math.max(6, (selectedRadiusKm as number) * 0.75))}
-                fill="rgba(145, 234, 175, 0.22)"
-                stroke="#C3E956"
-                strokeWidth="0.8"
-                strokeDasharray="2,2"
-                className="animate-pulse"
-              />
-            )}
+              {mapLayer === 'satellite' && (
+                <div className="absolute inset-0 bg-[#162a1b] bg-[radial-gradient(#275e37_1px,transparent_1px)] [background-size:20px_20px]">
+                  <div className="absolute inset-0 bg-gradient-to-t from-[#0e1d13] via-transparent to-[#162a1b]/60" />
+                </div>
+              )}
 
-            {/* Live Road Polyline from User to Selected Route Target */}
-            {selectedRoute && (
-              <polyline
-                points={`
-                  ${userSvgPos.x},${userSvgPos.y}
-                  ${(userSvgPos.x + projectGpsToSvg(selectedRoute.to.lat, selectedRoute.to.lng).x) / 2},${(userSvgPos.y + projectGpsToSvg(selectedRoute.to.lat, selectedRoute.to.lng).y) / 2}
-                  ${projectGpsToSvg(selectedRoute.to.lat, selectedRoute.to.lng).x},${projectGpsToSvg(selectedRoute.to.lat, selectedRoute.to.lng).y}
-                `}
-                fill="none"
-                stroke="#C3E956"
-                strokeWidth="1.2"
-                strokeLinecap="round"
-                strokeDasharray="2,2"
-                className="animate-pulse"
-              />
-            )}
-          </svg>
+              {mapLayer === 'terrain' && (
+                <div className="absolute inset-0 bg-[#d8eedf] bg-[radial-gradient(#4D7111_1px,transparent_1px)] [background-size:32px_32px]">
+                  <div className="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_top_left,_var(--tw-gradient-stops))] from-amber-700 via-emerald-800 to-transparent" />
+                </div>
+              )}
+
+              {/* Interactive SVG Projection Overlay for Municipal Boundaries, Pins, Geodesic Rings, and Polylines */}
+              <svg className="absolute inset-0 w-full h-full" viewBox="0 0 100 100" preserveAspectRatio="none">
+                {showBoundaries && (
+                  <g id="municipal-boundaries" className="transition-opacity duration-300">
+                    {NUEVA_VIZCAYA_MUNICIPALITIES.map((m) => {
+                      const isSelected = selectedMunicipality?.id === m.id;
+                      const centroid = projectGpsToSvg(m.centroid.lat, m.centroid.lng);
+
+                      return (
+                        <g key={m.id} className="group">
+                          <path
+                            d={m.svgPolygon}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedMunicipality(isSelected ? null : m);
+                            }}
+                            fill={isSelected ? 'rgba(77, 113, 17, 0.42)' : 'rgba(145, 234, 175, 0.16)'}
+                            stroke={isSelected ? '#1F4B2C' : 'rgba(31, 75, 44, 0.45)'}
+                            strokeWidth={isSelected ? '1.2' : '0.5'}
+                            strokeLinejoin="round"
+                            className="cursor-pointer hover:fill-[#91EAAF]/40 hover:stroke-[#1F4B2C] transition-all"
+                          />
+                          <text
+                            x={centroid.x}
+                            y={centroid.y}
+                            textAnchor="middle"
+                            dominantBaseline="central"
+                            className="text-[2.6px] font-black fill-[#1F4B2C] pointer-events-none select-none drop-shadow-xs"
+                          >
+                            {m.name}
+                          </text>
+                        </g>
+                      );
+                    })}
+                  </g>
+                )}
+
+                {selectedRadiusKm !== 'ALL' && (
+                  <circle
+                    cx={userSvgPos.x}
+                    cy={userSvgPos.y}
+                    r={Math.min(48, Math.max(6, (selectedRadiusKm as number) * 0.75))}
+                    fill="rgba(145, 234, 175, 0.22)"
+                    stroke="#C3E956"
+                    strokeWidth="0.8"
+                    strokeDasharray="2,2"
+                    className="animate-pulse"
+                  />
+                )}
+
+                {selectedRoute && (
+                  <polyline
+                    points={`
+                      ${userSvgPos.x},${userSvgPos.y}
+                      ${(userSvgPos.x + projectGpsToSvg(selectedRoute.to.lat, selectedRoute.to.lng).x) / 2},${(userSvgPos.y + projectGpsToSvg(selectedRoute.to.lat, selectedRoute.to.lng).y) / 2}
+                      ${projectGpsToSvg(selectedRoute.to.lat, selectedRoute.to.lng).x},${projectGpsToSvg(selectedRoute.to.lat, selectedRoute.to.lng).y}
+                    `}
+                    fill="none"
+                    stroke="#C3E956"
+                    strokeWidth="1.2"
+                    strokeLinecap="round"
+                    strokeDasharray="2,2"
+                    className="animate-pulse"
+                  />
+                )}
+              </svg>
+            </>
+          )}
 
           {/* Municipal GIS Intelligence & Logistics Card (Floating on Map) */}
           {selectedMunicipality && (
@@ -468,62 +675,63 @@ export const GisMapModule: React.FC = () => {
             </div>
           )}
 
-          {/* "My Location" Pin (User GPS) */}
-          <div
-            className="absolute z-20 -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing group"
-            style={{ left: `${userSvgPos.x}%`, top: `${userSvgPos.y}%` }}
-            title={`Your Location: ${userLocation.name}`}
-          >
-            <div className="relative">
-              <span className="absolute -inset-2 rounded-full bg-[#1F4B2C] opacity-30 animate-ping" />
-              <div className="relative w-9 h-9 rounded-full bg-[#1F4B2C] border-2 border-[#C3E956] shadow-lg flex items-center justify-center text-[#C3E956]">
-                <Navigation className="w-5 h-5 fill-current" />
-              </div>
-              <div className="absolute top-10 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-[#1F4B2C] text-[#C3E956] text-[10px] font-black shadow-md border border-[#91EAAF]">
-                My Hub: {userLocation.name.split('(')[0].trim()}
-              </div>
-            </div>
-          </div>
-
-          {/* Commodity & Stakeholder Map Pins */}
-          {visiblePins.map((stakeholder) => {
-            const pos = projectGpsToSvg(stakeholder.lat, stakeholder.lng);
-            const isSelected = selectedPreviewPin?.id === stakeholder.id;
-            const topCrop = stakeholder.userCommodities[0];
-
-            return (
+          {/* Vector Fallback GPS Pins (shown only when Vector GIS fallback is active) */}
+          {!useGoogleMapsEngine && (
+            <>
               <div
-                key={stakeholder.id}
-                onClick={() => handlePinClick(stakeholder)}
-                className="absolute z-10 -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform hover:scale-125"
-                style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                className="absolute z-20 -translate-x-1/2 -translate-y-1/2 cursor-grab active:cursor-grabbing group"
+                style={{ left: `${userSvgPos.x}%`, top: `${userSvgPos.y}%` }}
+                title={`Your Location: ${userLocation.name}`}
               >
-                <div className="relative flex flex-col items-center">
-                  {/* Pin Bubble */}
-                  <div
-                    className={`px-2 py-1 rounded-full text-[10px] font-black shadow-md flex items-center gap-1 border transition-all ${
-                      isSelected
-                        ? 'bg-[#1F4B2C] text-[#C3E956] border-[#C3E956] ring-2 ring-[#C3E956] scale-110'
-                        : stakeholder.role === 'Farmer'
-                        ? 'bg-white text-[#1F4B2C] border-[#4D7111]'
-                        : stakeholder.role === 'Supplier'
-                        ? 'bg-amber-50 text-amber-900 border-amber-400'
-                        : stakeholder.role === 'Buyer'
-                        ? 'bg-blue-50 text-blue-900 border-blue-400'
-                        : 'bg-emerald-50 text-emerald-900 border-emerald-400'
-                    }`}
-                  >
-                    <span className="w-2 h-2 rounded-full bg-[#C3E956]" />
-                    <span>{stakeholder.name.split(' ')[0]}</span>
-                    {topCrop && <span className="font-mono text-[9px] text-[#4D7111]">₱{topCrop.pricePerKg}</span>}
+                <div className="relative">
+                  <span className="absolute -inset-2 rounded-full bg-[#1F4B2C] opacity-30 animate-ping" />
+                  <div className="relative w-9 h-9 rounded-full bg-[#1F4B2C] border-2 border-[#C3E956] shadow-lg flex items-center justify-center text-[#C3E956]">
+                    <Navigation className="w-5 h-5 fill-current" />
                   </div>
-
-                  {/* Marker Pin Point */}
-                  <div className="w-3 h-3 bg-[#1F4B2C] rotate-45 -mt-1 rounded-xs border border-white" />
+                  <div className="absolute top-10 left-1/2 -translate-x-1/2 whitespace-nowrap px-2 py-0.5 rounded-full bg-[#1F4B2C] text-[#C3E956] text-[10px] font-black shadow-md border border-[#91EAAF]">
+                    My Hub: {userLocation.name.split('(')[0].trim()}
+                  </div>
                 </div>
               </div>
-            );
-          })}
+
+              {visiblePins.map((stakeholder) => {
+                const pos = projectGpsToSvg(stakeholder.lat, stakeholder.lng);
+                const isSelected = selectedPreviewPin?.id === stakeholder.id;
+                const topCrop = stakeholder.userCommodities[0];
+
+                return (
+                  <div
+                    key={stakeholder.id}
+                    onClick={() => handlePinClick(stakeholder)}
+                    className="absolute z-10 -translate-x-1/2 -translate-y-1/2 cursor-pointer transition-transform hover:scale-125"
+                    style={{ left: `${pos.x}%`, top: `${pos.y}%` }}
+                  >
+                    <div className="relative flex flex-col items-center">
+                      <div
+                        className={`px-2 py-1 rounded-full text-[10px] font-black shadow-md flex items-center gap-1 border transition-all ${
+                          isSelected
+                            ? 'bg-[#1F4B2C] text-[#C3E956] border-[#C3E956] ring-2 ring-[#C3E956] scale-110'
+                            : stakeholder.role === 'Farmer'
+                            ? 'bg-white text-[#1F4B2C] border-[#4D7111]'
+                            : stakeholder.role === 'Supplier'
+                            ? 'bg-amber-50 text-amber-900 border-amber-400'
+                            : stakeholder.role === 'Buyer'
+                            ? 'bg-blue-50 text-blue-900 border-blue-400'
+                            : 'bg-emerald-50 text-emerald-900 border-emerald-400'
+                        }`}
+                      >
+                        <span className="w-2 h-2 rounded-full bg-[#C3E956]" />
+                        <span>{stakeholder.name.split(' ')[0]}</span>
+                        {topCrop && <span className="font-mono text-[9px] text-[#4D7111]">₱{topCrop.pricePerKg}</span>}
+                      </div>
+
+                      <div className="w-3 h-3 bg-[#1F4B2C] rotate-45 -mt-1 rounded-xs border border-white" />
+                    </div>
+                  </div>
+                );
+              })}
+            </>
+          )}
 
           {/* 1st TAP PREVIEW POPOVER (Anchored on Map) */}
           {selectedPreviewPin && (
@@ -536,10 +744,13 @@ export const GisMapModule: React.FC = () => {
             >
               <div className="flex items-start justify-between pb-2 border-b border-neutral-200">
                 <div className="flex items-center gap-2">
-                  <img
-                    src={selectedPreviewPin.avatar}
-                    alt={selectedPreviewPin.name}
-                    className="w-9 h-9 rounded-full object-cover border border-[#91EAAF]"
+                  <UserAvatar
+                    name={selectedPreviewPin.name}
+                    avatar={selectedPreviewPin.avatar}
+                    role={selectedPreviewPin.role}
+                    sizeClass="w-9 h-9"
+                    textSizeClass="text-xs"
+                    className="border border-[#91EAAF]"
                   />
                   <div>
                     <h4 className="text-xs font-bold text-[#1F4B2C] truncate max-w-[150px]">
@@ -645,10 +856,13 @@ export const GisMapModule: React.FC = () => {
                   className="p-3 rounded-2xl bg-white/80 border border-neutral-200 hover:border-[#91EAAF] hover:shadow-xs transition-all cursor-pointer text-left"
                 >
                   <div className="flex items-start gap-2.5">
-                    <img
-                      src={s.avatar}
-                      alt={s.name}
-                      className="w-8 h-8 rounded-full object-cover border border-[#91EAAF] shrink-0 mt-0.5"
+                    <UserAvatar
+                      name={s.name}
+                      avatar={s.avatar}
+                      role={s.role}
+                      sizeClass="w-8 h-8"
+                      textSizeClass="text-[10px]"
+                      className="border border-[#91EAAF] mt-0.5"
                     />
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between">
@@ -688,10 +902,13 @@ export const GisMapModule: React.FC = () => {
 
             {/* Profile Header */}
             <div className="flex flex-col sm:flex-row items-start sm:items-center gap-4 pb-6 border-b border-neutral-200">
-              <img
-                src={fullProfileUser.avatar}
-                alt={fullProfileUser.name}
-                className="w-20 h-20 rounded-full object-cover border-4 border-[#91EAAF] shadow-md"
+              <UserAvatar
+                name={fullProfileUser.name}
+                avatar={fullProfileUser.avatar}
+                role={fullProfileUser.role}
+                sizeClass="w-20 h-20"
+                textSizeClass="text-xl"
+                className="border-4 border-[#91EAAF] shadow-md"
               />
               <div className="space-y-1">
                 <div className="flex items-center gap-2">

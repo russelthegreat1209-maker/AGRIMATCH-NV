@@ -34,6 +34,7 @@ import {
   SEED_COMMUNITY_POSTS,
 } from '../data/seedData';
 import { checkDualHandshakeCompletion, parseNvatTextToStructured } from '../utils/agriMath';
+import { getCropPhotoByName } from '../data/cropAssets';
 import { auth, db, signInWithGoogle, logOutFirebase, testFirestoreConnection } from '../config/firebase';
 import { TRANSLATIONS, LanguageCode, TranslationDictionary, LANGUAGE_OPTIONS } from '../i18n/translations';
 import {
@@ -125,7 +126,7 @@ interface AppContextType {
   deleteCommodity: (commodityId: string) => void;
   toggleBanUser: (userId: string) => void;
   publishAdminAnnouncement: (title: string, content: string, category: AdminAnnouncement['category']) => void;
-  processAndPublishNvatBulletin: (rawText: string) => void;
+  processAndPublishNvatBulletin: (rawText: string, preParsedItems?: NvatMarketItem[]) => void;
   publishStructuredNvatBulletin: (items: NvatMarketItem[], sourceTitle?: string) => void;
   triggerAgentPacket: (packet: Omit<AgentPacket, 'id' | 'timestamp'>) => void;
 
@@ -159,14 +160,7 @@ interface AppContextType {
 const AppContext = createContext<AppContextType | undefined>(undefined);
 
 export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
-  const [environmentMode, setEnvironmentModeState] = useState<EnvironmentMode>(() => {
-    try {
-      const saved = localStorage.getItem('agrimatch_mode');
-      return saved === 'production' ? 'production' : 'demo';
-    } catch {
-      return 'demo';
-    }
-  });
+  const [environmentMode, setEnvironmentModeState] = useState<EnvironmentMode>('demo');
 
   const setEnvironmentMode = (mode: EnvironmentMode) => {
     setEnvironmentModeState(mode);
@@ -272,8 +266,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
           barangay: 'Aliaga',
           lat: 16.3861,
           lng: 121.1065,
-          avatar: fbUser.photoURL || '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp',
-          coverPhoto: '/assets/aistudio/file_000000000e5c8209a20727869a247797_07ecb429.jpg',
+          avatar: fbUser.photoURL || '',
+          coverPhoto: '',
           bio: 'Verified Real-Time Producer on AGRIMATCH NV',
           verified: true,
           status: 'ACTIVE',
@@ -330,7 +324,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
   const [activeTab, setActiveTab] = useState<string>(() => {
     try {
       const savedTab = localStorage.getItem('agrimatch_active_tab');
-      return savedTab || 'public-landing';
+      if (savedTab && savedTab !== 'framework') return savedTab;
+      return 'public-landing';
     } catch {
       return 'public-landing';
     }
@@ -466,8 +461,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
         barangay: 'Don Domingo Madden',
         lat: 16.4856,
         lng: 121.1492,
-        avatar: '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121805_0000_63ea759a.webp',
-        coverPhoto: '/assets/aistudio/file_000000000e5c8209a20727869a247797_07ecb429.jpg',
+        avatar: '',
+        coverPhoto: '',
         bio: 'Platform Creator, Master Administrator & Lead Multi-Agent AI Engineer for AGRIMATCH-NV.',
         verified: true,
         status: 'ACTIVE',
@@ -517,8 +512,8 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       barangay: accountData.barangay || 'Aliaga',
       lat: accountData.lat || 16.3861,
       lng: accountData.lng || 121.1065,
-      avatar: accountData.avatar || '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121823_0000_2ea129ee.webp',
-      coverPhoto: accountData.coverPhoto || '/assets/aistudio/file_000000000e5c8209a20727869a247797_07ecb429.jpg',
+      avatar: accountData.avatar || '',
+      coverPhoto: accountData.coverPhoto || '',
       bio: accountData.bio || 'Nueva Vizcaya registered agricultural stakeholder.',
       verified: true,
       status: 'ACTIVE',
@@ -801,7 +796,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       availableKg: cropData.availableKg || 100,
       pricePerKg: cropData.pricePerKg || 30,
       minOrderKg: cropData.minOrderKg || 20,
-      imageUrl: cropData.imageUrl || '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp',
+      imageUrl: cropData.imageUrl || getCropPhotoByName(cropData.name || '', cropData.category),
       additionalPhotos: cropData.additionalPhotos || [],
       videoUrl: cropData.videoUrl || '',
       mediaType: cropData.mediaType || (cropData.videoUrl ? 'video' : 'photo'),
@@ -959,9 +954,11 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
     addNotification(`Official announcement published: "${title}"`, 'success');
   };
 
-  const processAndPublishNvatBulletin = (rawText: string) => {
+  const processAndPublishNvatBulletin = (rawText: string, preParsedItems?: NvatMarketItem[]) => {
     const today = new Date().toISOString().split('T')[0];
-    const parsedItems = parseNvatTextToStructured(rawText, today);
+    const parsedItems = preParsedItems && preParsedItems.length > 0
+      ? preParsedItems
+      : parseNvatTextToStructured(rawText, today);
 
     const newReport: NvatBulletinReport = {
       id: `nvat-bulletin-${Date.now()}`,
@@ -1056,7 +1053,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authorId: currentUser?.id || 'guest_01',
       authorName: currentUser?.name || 'Agri Producer',
       authorRole: currentUser?.role || 'Farmer',
-      authorAvatar: currentUser?.avatar || '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp',
+      authorAvatar: currentUser?.avatar || '',
       authorMunicipality: currentUser?.municipality || 'Bambang',
       category,
       content,
@@ -1112,7 +1109,7 @@ export const AppProvider: React.FC<{ children: React.ReactNode }> = ({ children 
       authorId: currentUser?.id || 'guest_user',
       authorName: currentUser?.name || 'Community Member',
       authorRole: currentUser?.role || 'Farmer',
-      authorAvatar: currentUser?.avatar || '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp',
+      authorAvatar: currentUser?.avatar || '',
       text: text.trim(),
       timestamp: 'Just now',
       likes: [],

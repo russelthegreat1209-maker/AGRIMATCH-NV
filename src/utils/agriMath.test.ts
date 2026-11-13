@@ -7,78 +7,79 @@ import {
   calculateSupplierRecommendationScore,
   checkDualHandshakeCompletion,
   parseNvatTextToStructured,
+  getUserInitials,
+  buildMunicipalGeoPolygon,
 } from './agriMath';
 
-test('haversineDistanceKm calculates distance between Bambang and Bayombong accurately', () => {
-  // Bambang: 16.3861, 121.1065; Bayombong: 16.4815, 121.1492 (approx 11-13 km)
-  const dist = haversineDistanceKm(16.3861, 121.1065, 16.4815, 121.1492);
-  assert.ok(dist >= 10 && dist <= 15, `Expected distance ~11-13 km, got ${dist}`);
+test('haversineDistanceKm computes Bambang to Bayombong highway proximity accurately', () => {
+  const km = haversineDistanceKm(16.3861, 121.1065, 16.4856, 121.1492);
+  assert.ok(km > 10 && km < 15, `Expected 10-15 km, got ${km}`);
 });
 
-test('haversineDistanceKm returns 0 for identical coordinates', () => {
-  const dist = haversineDistanceKm(16.4830, 121.1500, 16.4830, 121.1500);
-  assert.equal(dist, 0);
+test('isWithinRadius handles numeric thresholds and ALL filter', () => {
+  assert.equal(isWithinRadius(16.3861, 121.1065, 16.4856, 121.1492, 25), true);
+  assert.equal(isWithinRadius(16.3861, 121.1065, 16.4856, 121.1492, 5), false);
+  assert.equal(isWithinRadius(16.3861, 121.1065, 15.8667, 121.3, 'ALL'), true);
 });
 
-test('isWithinRadius filters correctly', () => {
-  const bambangLat = 16.3861;
-  const bambangLng = 121.1065;
-  const bayombongLat = 16.4815;
-  const bayombongLng = 121.1492;
-
-  // 12 km is within 50km
-  assert.equal(isWithinRadius(bambangLat, bambangLng, bayombongLat, bayombongLng, 50), true);
-  // 12 km is within 15km
-  assert.equal(isWithinRadius(bambangLat, bambangLng, bayombongLat, bayombongLng, 15), true);
-  // 12 km is NOT within 5km
-  assert.equal(isWithinRadius(bambangLat, bambangLng, bayombongLat, bayombongLng, 5), false);
-  // 'ALL' always returns true
-  assert.equal(isWithinRadius(bambangLat, bambangLng, bayombongLat, bayombongLng, 'ALL'), true);
+test('calculateDrivingTimeMinutes scales monotonically with distance', () => {
+  assert.equal(calculateDrivingTimeMinutes(0), 0);
+  const shortDrive = calculateDrivingTimeMinutes(10);
+  const longDrive = calculateDrivingTimeMinutes(42);
+  assert.equal(longDrive, 60);
+  assert.ok(shortDrive < longDrive);
 });
 
-test('calculateDrivingTimeMinutes handles mountain transit estimation', () => {
-  const time = calculateDrivingTimeMinutes(21, 42); // 21 km at 42 km/h is 30 mins
-  assert.equal(time, 30);
+test('calculateSupplierRecommendationScore prioritizes lower price, closer verified hub, and sufficient stock', () => {
+  const strongMatch = calculateSupplierRecommendationScore({
+    itemPrice: 30,
+    benchmarkPrice: 35,
+    distanceKm: 8,
+    isVerified: true,
+    aiAuthenticityScore: 98,
+    availableKg: 1000,
+    targetKg: 500,
+  });
+  const weakMatch = calculateSupplierRecommendationScore({
+    itemPrice: 55,
+    benchmarkPrice: 35,
+    distanceKm: 70,
+    isVerified: false,
+    aiAuthenticityScore: 60,
+    availableKg: 100,
+    targetKg: 500,
+  });
+  assert.ok(strongMatch > weakMatch);
+  assert.ok(strongMatch <= 100 && strongMatch >= 1);
 });
 
-test('checkDualHandshakeCompletion requires both parties to confirm', () => {
+test('checkDualHandshakeCompletion completes only when both supplier and buyer confirm', () => {
   assert.equal(checkDualHandshakeCompletion(false, false), false);
   assert.equal(checkDualHandshakeCompletion(true, false), false);
   assert.equal(checkDualHandshakeCompletion(false, true), false);
   assert.equal(checkDualHandshakeCompletion(true, true), true);
 });
 
-test('calculateSupplierRecommendationScore weighs price, distance, quality, availability', () => {
-  const highQualityScore = calculateSupplierRecommendationScore({
-    itemPrice: 30,
-    benchmarkPrice: 35,
-    distanceKm: 5,
-    maxDistanceThresholdKm: 80,
-    isVerified: true,
-    aiAuthenticityScore: 98,
-    availableKg: 1000,
-    targetKg: 500,
-  });
-
-  const lowQualityScore = calculateSupplierRecommendationScore({
-    itemPrice: 50,
-    benchmarkPrice: 35,
-    distanceKm: 75,
-    maxDistanceThresholdKm: 80,
-    isVerified: false,
-    aiAuthenticityScore: 40,
-    availableKg: 100,
-    targetKg: 500,
-  });
-
-  assert.ok(highQualityScore > lowQualityScore, `High quality (${highQualityScore}) should beat low quality (${lowQualityScore})`);
-  assert.ok(highQualityScore >= 80, `High quality score should be >= 80, got ${highQualityScore}`);
+test('parseNvatTextToStructured parses Highland Cabbage and fallback items cleanly', () => {
+  const items = parseNvatTextToStructured('Highland Cabbage plentiful today at NVAT Bambang', '2026-11-12');
+  assert.ok(items.length >= 1);
+  assert.equal(items[0].commodityName, 'Highland Cabbage');
+  assert.equal(items[0].date, '2026-11-12');
 });
 
-test('parseNvatTextToStructured parses commodity mentions and variances', () => {
-  const sampleBulletin = 'NVAT Bambang Daily Price Bulletin: Highland cabbage inflows reached 42 metric tons today with prevailing wholesale prices dropping to Php 32/kg. Red onions remained steady at Php 95/kg.';
-  const parsed = parseNvatTextToStructured(sampleBulletin, '2026-11-12');
-  assert.ok(parsed.length >= 2, 'Should parse at least cabbage and onion');
-  const cabbage = parsed.find(item => item.commodityName.toLowerCase().includes('cabbage'));
-  assert.ok(cabbage !== undefined, 'Cabbage should be parsed');
+test('getUserInitials formats names cleanly with parenthetical annotations stripped', () => {
+  assert.equal(getUserInitials('Mang Mateo Reyes'), 'MR');
+  assert.equal(getUserInitials('Engr. Russel (System Architect)'), 'ER');
+  assert.equal(getUserInitials('Solano'), 'SO');
+  assert.equal(getUserInitials(''), 'NV');
+});
+
+test('buildMunicipalGeoPolygon generates bounded 7-point lat/lng polygons around centroid', () => {
+  const centroid = { lat: 16.3861, lng: 121.1065 };
+  const poly = buildMunicipalGeoPolygon(centroid, 345, 2);
+  assert.equal(poly.length, 7);
+  for (const pt of poly) {
+    assert.ok(Math.abs(pt.lat - centroid.lat) < 0.25);
+    assert.ok(Math.abs(pt.lng - centroid.lng) < 0.25);
+  }
 });

@@ -90,12 +90,49 @@ export const MasterAdminModule: React.FC = () => {
     setAnnContent('');
   };
 
-  const handleProcessNvat = () => {
+  const handleProcessNvat = async () => {
+    if (!rawNvatInput.trim()) return;
     setIsAiProcessing(true);
-    setTimeout(() => {
+    const today = new Date().toISOString().split('T')[0];
+    try {
+      const res = await fetch('/api/ai/nvat-parse', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ rawText: rawNvatInput, defaultDate: today }),
+      });
+      const data = res.ok ? await res.json() : { items: null };
+      const parsed =
+        Array.isArray(data.items) && data.items.length > 0
+          ? data.items.map((it: any, idx: number) => {
+              const prev = Number(it.prevailingPricePhp) || 35;
+              const previous = Number(it.previousPricePhp) || prev;
+              const variance = Math.round(((prev - previous) / Math.max(previous, 1)) * 1000) / 10;
+              return {
+                id: `nvat-${Date.now()}-${idx}`,
+                commodityName: String(it.commodityName || 'NVAT Commodity'),
+                category: (it.category as any) || 'Highland Vegetables',
+                minPricePhp: Number(it.minPricePhp) || Math.round(prev * 0.9),
+                maxPricePhp: Number(it.maxPricePhp) || Math.round(prev * 1.1),
+                prevailingPricePhp: prev,
+                previousPricePhp: previous,
+                priceVariancePercent: variance,
+                estimatedVolumeTradedTons: Number(it.estimatedVolumeTradedTons) || 15,
+                marketTrendStatus: variance > 2 ? 'Surging' : variance < -2 ? 'Declining' : 'Stable',
+                date: today,
+                unitOfMeasure: 'PHP / kg',
+                priceType: 'Confirmed',
+                originalDataSource: 'NVAT Daily Bulletin, Bambang',
+                requiresReview: false,
+                lastUpdated: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + ' PHT',
+              };
+            })
+          : undefined;
+      processAndPublishNvatBulletin(rawNvatInput, parsed);
+    } catch {
       processAndPublishNvatBulletin(rawNvatInput);
+    } finally {
       setIsAiProcessing(false);
-    }, 600);
+    }
   };
 
   return (

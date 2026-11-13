@@ -17,7 +17,6 @@ import { MasterAdminModule } from './components/MasterAdminModule';
 import { MultiAgentModule } from './components/MultiAgentModule';
 import { UserProfileModule } from './components/UserProfileModule';
 import { CommunityChatModule } from './components/CommunityChatModule';
-import { ConceptualFrameworkModule } from './components/ConceptualFrameworkModule';
 import { PagasaWeatherModal } from './components/PagasaWeatherModal';
 import { AgribeeFloatingCompanion } from './components/AgribeeFloatingCompanion';
 import { GuestLockModal } from './components/GuestLockModal';
@@ -27,10 +26,40 @@ import { AgribeeInteractiveTour } from './components/AgribeeInteractiveTour';
 
 const MainLayout: React.FC = () => {
   const { activeTab, isPagasaModalOpen, setIsPagasaModalOpen } = useApp();
+  const [mapsQuotaExceeded, setMapsQuotaExceeded] = useState(false);
+
+  useEffect(() => {
+    const handleQuotaExceeded = () => setMapsQuotaExceeded(true);
+    window.addEventListener('gmp-quota-exceeded', handleQuotaExceeded);
+    return () => window.removeEventListener('gmp-quota-exceeded', handleQuotaExceeded);
+  }, []);
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F4FFFC] text-[#1F4B2C]">
-      {/* Top Bar with Environment Mode Toggle & Switcher */}
+      {mapsQuotaExceeded && (
+        <div className="sticky top-0 z-50 bg-amber-50 border-b border-amber-200 px-4 py-3 text-xs sm:text-sm text-amber-900 flex items-center justify-between gap-2">
+          <span>
+            Map quota reached on the shared demo key. Please check the console for details or{' '}
+            <a
+              href="https://developers.google.com/maps/ai/ai-studio?utm_campaign=gmp_mcp_codeassist_v1_aistudio#quota_exceeded_errors"
+              target="_blank"
+              rel="noreferrer"
+              className="underline font-bold"
+            >
+              switch to a billed Google Cloud key
+            </a>{' '}
+            if you need more capacity.
+          </span>
+          <button
+            onClick={() => setMapsQuotaExceeded(false)}
+            className="text-amber-700 hover:text-amber-950 font-bold text-xs shrink-0"
+          >
+            Dismiss
+          </button>
+        </div>
+      )}
+
+      {/* Top Bar */}
       <TopNav />
 
       {/* Main Container */}
@@ -41,7 +70,6 @@ const MainLayout: React.FC = () => {
         {activeTab === 'marketplace' && <MarketplaceModule />}
         {activeTab === 'community' && <CommunityChatModule />}
         {activeTab === 'decision-support' && <MultiAgentModule />}
-        {activeTab === 'framework' && <ConceptualFrameworkModule />}
         {activeTab === 'messages' && <PrivateChatModule />}
         {activeTab === 'admin' && <MasterAdminModule />}
         {activeTab === 'profile' && <UserProfileModule />}

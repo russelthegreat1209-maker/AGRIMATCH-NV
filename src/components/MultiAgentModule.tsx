@@ -39,6 +39,16 @@ export const MultiAgentModule: React.FC = () => {
   // Intelligent recommendations search
   const [selectedCropQuery, setSelectedCropQuery] = useState('Highland Cabbage');
   const [targetVolumeKg, setTargetVolumeKg] = useState(500);
+  const [isCoordinating, setIsCoordinating] = useState(false);
+  const [roleDirective, setRoleDirective] = useState('Optimize morning harvest dispatch and NVAT Bambang buyer matching.');
+  const [roleAiResult, setRoleAiResult] = useState<{
+    fromAgent: string;
+    toAgent: string;
+    intent: string;
+    reasoning: string;
+    priorityHub?: string;
+    confidenceScore?: number;
+  } | null>(null);
 
   // Compute composite weighted supplier ranking scores
   const scoredSuppliers = commodities
@@ -95,20 +105,80 @@ export const MultiAgentModule: React.FC = () => {
     },
   ];
 
-  const handleSimulateAgentPing = () => {
-    triggerAgentPacket({
-      fromAgent: 'Farmer Agent',
-      toAgent: 'Market Agent',
-      intent: 'LIVE_HARVEST_DISPATCH_PING',
-      payload: {
-        timestamp: new Date().toISOString(),
-        farmerId: currentUser?.id || 'farmer_01',
-        commodity: 'Highland Cabbage',
-        volumeKg: 1000,
-        municipality: currentUser?.municipality || 'Kayapa',
-      },
-    });
-    addNotification('Multi-Agent JSON message broadcasted across coordination mesh!', 'success');
+  const normalizeAgentName = (
+    raw?: string,
+    fallbackRole?: string
+  ): 'Farmer Agent' | 'Buyer Agent' | 'Supplier Agent' | 'Market Agent' | 'Admin Agent' => {
+    const val = (raw || fallbackRole || '').toLowerCase();
+    if (val.includes('buyer')) return 'Buyer Agent';
+    if (val.includes('supplier')) return 'Supplier Agent';
+    if (val.includes('market') || val.includes('cooperative')) return 'Market Agent';
+    if (val.includes('admin') || val.includes('government') || val.includes('master')) return 'Admin Agent';
+    return 'Farmer Agent';
+  };
+
+  const handleRunAgentCoordination = async (customQuery?: string) => {
+    setIsCoordinating(true);
+    const activeRole = currentUser?.role || 'Farmer';
+    const mappedAgent = normalizeAgentName(undefined, activeRole);
+    const activeMuni = currentUser?.municipality || 'Kayapa';
+    const directive = customQuery || roleDirective;
+    const marketSnapshot = commodities
+      .slice(0, 4)
+      .map((c) => `${c.name} (${c.municipality}): PHP ${c.pricePerKg}/kg, ${c.availableKg}kg`)
+      .join('; ');
+
+    try {
+      const res = await fetch('/api/ai/multi-agent-coordinate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          role: activeRole,
+          municipality: activeMuni,
+          query: directive,
+          marketSnapshot,
+        }),
+      });
+      const data = res.ok ? await res.json() : null;
+      const packet = {
+        fromAgent: normalizeAgentName(data?.fromAgent, activeRole),
+        toAgent: normalizeAgentName(data?.toAgent, 'Market Agent'),
+        intent: data?.intent || 'LIVE_COORDINATION_DISPATCH',
+        payload: {
+          timestamp: new Date().toISOString(),
+          stakeholder: currentUser?.name || 'Demo Stakeholder',
+          municipality: activeMuni,
+          reasoning:
+            data?.reasoning ||
+            `Matched ${activeMuni} stock with NVAT Bambang demand corridor.`,
+          ...(data?.payload || {}),
+        },
+      };
+      triggerAgentPacket(packet);
+      setRoleAiResult({
+        fromAgent: packet.fromAgent,
+        toAgent: packet.toAgent,
+        intent: packet.intent,
+        reasoning: packet.payload.reasoning,
+        priorityHub: packet.payload.priorityHub,
+        confidenceScore: packet.payload.confidenceScore,
+      });
+      addNotification('Multi-Agent AI coordination packet generated and logged.', 'success');
+    } catch {
+      triggerAgentPacket({
+        fromAgent: mappedAgent,
+        toAgent: 'Market Agent',
+        intent: 'LOCAL_SYNC_PING',
+        payload: {
+          timestamp: new Date().toISOString(),
+          municipality: activeMuni,
+          directive,
+        },
+      });
+      addNotification('Coordination ping logged to mesh.', 'info');
+    } finally {
+      setIsCoordinating(false);
+    }
   };
 
   return (
@@ -444,11 +514,12 @@ export const MultiAgentModule: React.FC = () => {
               </p>
             </div>
             <button
-              onClick={handleSimulateAgentPing}
-              className="px-4 py-2 rounded-full btn-forest text-xs font-bold flex items-center gap-1.5 shadow-xs"
+              onClick={() => handleRunAgentCoordination('Run live harvest and price dispatch sync')}
+              disabled={isCoordinating}
+              className="px-4 py-2 rounded-full btn-forest text-xs font-bold flex items-center gap-1.5 shadow-xs disabled:opacity-50"
             >
-              <Zap className="w-3.5 h-3.5 text-[#C3E956]" />
-              Trigger Live Coordination Ping
+              <Zap className={`w-3.5 h-3.5 text-[#C3E956] ${isCoordinating ? 'animate-spin' : ''}`} />
+              <span>{isCoordinating ? 'Coordinating Agents...' : 'Trigger Live Coordination Ping'}</span>
             </button>
           </div>
 
@@ -508,29 +579,62 @@ export const MultiAgentModule: React.FC = () => {
             </p>
           </div>
 
-          <div className="p-5 rounded-2xl bg-white border border-[#91EAAF] space-y-3">
+          <div className="p-5 rounded-2xl bg-white border border-[#91EAAF] space-y-4">
             <div className="flex items-center gap-3">
-              <img
-                src="/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121834_0000_85d9f953.webp"
-                alt="Agent Avatar"
-                className="w-14 h-14 object-contain"
-              />
+              <div className="w-12 h-12 rounded-2xl bg-[#1F4B2C] text-[#C3E956] flex items-center justify-center shrink-0 shadow-sm">
+                <Cpu className="w-6 h-6" />
+              </div>
               <div>
                 <h4 className="text-sm font-bold text-[#1F4B2C]">
-                  {currentUser?.role} Autonomous Companion
+                  {currentUser?.role || 'Stakeholder'} Autonomous Agent
                 </h4>
                 <p className="text-xs text-neutral-500">
-                  Real-time synchronization with Nueva Vizcaya Agricultural Terminal and PAGASA feeds
+                  Synchronized with NVAT Bambang pricing, PAGASA forecasts, and regional logistics
                 </p>
               </div>
             </div>
 
-            <div className="p-3.5 rounded-xl bg-[#F4FFFC] border border-[#91EAAF]/60 text-xs text-neutral-700 space-y-1">
-              <span className="font-bold text-[#1F4B2C]">Active Directive:</span>
-              <p>
-                Continuously auditing farm harvest dates against predicted rainfall spikes in Kayapa & Kasibu. Auto-optimizing crop listings to match wholesale buyer inquiries from Metro Balintawak and Divisoria.
-              </p>
-            </div>
+            <form
+              onSubmit={(e) => {
+                e.preventDefault();
+                handleRunAgentCoordination(roleDirective);
+              }}
+              className="flex flex-col sm:flex-row gap-2"
+            >
+              <input
+                type="text"
+                value={roleDirective}
+                onChange={(e) => setRoleDirective(e.target.value)}
+                placeholder="Enter directive for your role agent..."
+                className="flex-1 px-3.5 py-2.5 rounded-xl border border-neutral-300 bg-neutral-50 text-xs focus:bg-white focus:outline-none focus:border-[#4D7111]"
+              />
+              <button
+                type="submit"
+                disabled={isCoordinating || !roleDirective.trim()}
+                className="px-5 py-2.5 rounded-xl btn-forest text-xs font-black flex items-center justify-center gap-1.5 disabled:opacity-50"
+              >
+                <Sparkles className={`w-4 h-4 text-[#C3E956] ${isCoordinating ? 'animate-spin' : ''}`} />
+                <span>{isCoordinating ? 'Running...' : 'Run Role Agent'}</span>
+              </button>
+            </form>
+
+            {roleAiResult && (
+              <div className="p-4 rounded-xl bg-[#F4FFFC] border border-[#91EAAF] text-xs space-y-1.5">
+                <div className="flex items-center justify-between font-bold text-[#1F4B2C]">
+                  <span>
+                    {roleAiResult.fromAgent} → {roleAiResult.toAgent}
+                  </span>
+                  {roleAiResult.confidenceScore && (
+                    <span className="px-2 py-0.5 rounded-full bg-[#1F4B2C] text-[#C3E956] text-[10px]">
+                      {roleAiResult.confidenceScore}% Confidence
+                    </span>
+                  )}
+                </div>
+                <p className="text-neutral-700 font-medium leading-relaxed">
+                  {roleAiResult.reasoning}
+                </p>
+              </div>
+            )}
           </div>
         </div>
       )}

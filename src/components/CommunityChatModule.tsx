@@ -25,6 +25,9 @@ import {
   Tag,
 } from 'lucide-react';
 import { CommunityPost, NvatMarketItem, StakeholderRole } from '../types';
+import { UserAvatar } from './UserAvatar';
+import { REAL_CROP_GALLERY } from '../data/cropAssets';
+import { parseNvatTextToStructured } from '../utils/agriMath';
 
 export const CommunityChatModule: React.FC = () => {
   const {
@@ -150,13 +153,12 @@ export const CommunityChatModule: React.FC = () => {
             {/* Post Composer Card */}
             <div className="p-5 rounded-3xl bg-white border-2 border-[#91EAAF] shadow-md space-y-3">
               <div className="flex items-start gap-3">
-                <img
-                  src={
-                    currentUser?.avatar ||
-                    '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp'
-                  }
-                  alt={currentUser?.name || 'User'}
-                  className="w-10 h-10 rounded-full object-cover border-2 border-[#91EAAF] shrink-0"
+                <UserAvatar
+                  name={currentUser?.name || 'Producer'}
+                  avatar={currentUser?.avatar}
+                  role={currentUser?.role}
+                  sizeClass="w-10 h-10"
+                  className="border-2 border-[#91EAAF]"
                 />
                 <div className="flex-1 space-y-2">
                   <textarea
@@ -205,18 +207,37 @@ export const CommunityChatModule: React.FC = () => {
                       ))}
                     </div>
 
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <label className="p-1.5 rounded-xl border border-neutral-200 text-neutral-600 hover:bg-neutral-50 text-[10px] font-bold flex items-center gap-1 cursor-pointer">
+                        <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Upload Photo</span>
+                        <input
+                          type="file"
+                          accept="image/*"
+                          className="hidden"
+                          onChange={(e) => {
+                            const file = e.target.files?.[0];
+                            if (!file) return;
+                            const reader = new FileReader();
+                            reader.onload = (ev) => {
+                              if (ev.target?.result) {
+                                setPostImage(ev.target.result as string);
+                              }
+                            };
+                            reader.readAsDataURL(file);
+                          }}
+                        />
+                      </label>
                       <button
                         type="button"
-                        onClick={() =>
-                          setPostImage(
-                            '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp'
-                          )
-                        }
+                        onClick={() => {
+                          const next = REAL_CROP_GALLERY[communityPosts.length % REAL_CROP_GALLERY.length].url;
+                          setPostImage(next);
+                        }}
                         className="p-1.5 rounded-xl border border-neutral-200 text-neutral-600 hover:bg-neutral-50 text-[10px] font-bold flex items-center gap-1"
                       >
-                        <ImageIcon className="w-3.5 h-3.5 text-emerald-600" />
-                        <span>Add Photo</span>
+                        <Camera className="w-3.5 h-3.5 text-emerald-600" />
+                        <span>Sample Crop Photo</span>
                       </button>
 
                       <button
@@ -261,9 +282,7 @@ export const CommunityChatModule: React.FC = () => {
                 <MessageSquare className="w-8 h-8 text-neutral-400 mx-auto" />
                 <p className="text-sm font-bold text-[#1F4B2C]">No posts in this category yet.</p>
                 <p className="text-xs text-neutral-500">
-                  {environmentMode === 'production'
-                    ? 'In Live Mode, you are connected to the real-time database. Be the first to share an update!'
-                    : 'Switch category or post your farm update above.'}
+                  Switch category or post your farm update above.
                 </p>
               </div>
             ) : (
@@ -292,10 +311,12 @@ export const CommunityChatModule: React.FC = () => {
                         }
                         className="flex items-center gap-3 cursor-pointer group"
                       >
-                        <img
-                          src={post.authorAvatar}
-                          alt={post.authorName}
-                          className="w-11 h-11 rounded-full object-cover border-2 border-[#91EAAF] group-hover:scale-105 transition-transform"
+                        <UserAvatar
+                          name={post.authorName}
+                          avatar={post.authorAvatar}
+                          role={post.authorRole}
+                          sizeClass="w-11 h-11"
+                          className="border-2 border-[#91EAAF] group-hover:scale-105 transition-transform"
                         />
                         <div>
                           <div className="flex items-center gap-1.5 flex-wrap">
@@ -393,13 +414,13 @@ export const CommunityChatModule: React.FC = () => {
                       <div className="pt-3 border-t border-neutral-100 space-y-3">
                         {/* New Comment Input */}
                         <div className="flex items-center gap-2">
-                          <img
-                            src={
-                              currentUser?.avatar ||
-                              '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp'
-                            }
-                            alt="You"
-                            className="w-7 h-7 rounded-full object-cover border border-[#91EAAF]"
+                          <UserAvatar
+                            name={currentUser?.name || 'You'}
+                            avatar={currentUser?.avatar}
+                            role={currentUser?.role}
+                            sizeClass="w-7 h-7"
+                            textSizeClass="text-[10px]"
+                            className="border border-[#91EAAF]"
                           />
                           <input
                             type="text"
@@ -447,10 +468,12 @@ export const CommunityChatModule: React.FC = () => {
                                     }
                                     className="flex items-center gap-2 cursor-pointer group"
                                   >
-                                    <img
-                                      src={comment.authorAvatar}
-                                      alt={comment.authorName}
-                                      className="w-5 h-5 rounded-full object-cover"
+                                    <UserAvatar
+                                      name={comment.authorName}
+                                      avatar={comment.authorAvatar}
+                                      role={comment.authorRole}
+                                      sizeClass="w-6 h-6"
+                                      textSizeClass="text-[9px]"
                                     />
                                     <span className="font-bold text-[#1F4B2C] group-hover:underline">
                                       {comment.authorName}
@@ -500,8 +523,7 @@ export const CommunityChatModule: React.FC = () => {
                     role: 'Farmer' as StakeholderRole,
                     municipality: 'Kayapa (Highlands)',
                     specialty: 'Highland Cabbage & Carrots',
-                    avatar:
-                      '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp',
+                    avatar: '',
                   },
                   {
                     id: 'farmer_02',
@@ -509,8 +531,7 @@ export const CommunityChatModule: React.FC = () => {
                     role: 'Farmer' as StakeholderRole,
                     municipality: 'Bambang (Lowlands)',
                     specialty: 'Red Creole Onions & Garlic',
-                    avatar:
-                      '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121815_0000_3e33f2ef.webp',
+                    avatar: '',
                   },
                   {
                     id: 'coop_01',
@@ -518,8 +539,7 @@ export const CommunityChatModule: React.FC = () => {
                     role: 'Cooperative' as StakeholderRole,
                     municipality: 'Kasibu Valley',
                     specialty: 'Satsuma Mandarins & Ponkan',
-                    avatar:
-                      '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121731_0000_3693cdfa.webp',
+                    avatar: '',
                   },
                 ].map((u) => (
                   <div
@@ -527,10 +547,13 @@ export const CommunityChatModule: React.FC = () => {
                     className="p-2.5 rounded-2xl bg-neutral-50 border border-neutral-100 flex items-center justify-between gap-2"
                   >
                     <div className="flex items-center gap-2 min-w-0">
-                      <img
-                        src={u.avatar}
-                        alt={u.name}
-                        className="w-8 h-8 rounded-full object-cover border border-[#91EAAF] shrink-0"
+                      <UserAvatar
+                        name={u.name}
+                        avatar={u.avatar}
+                        role={u.role}
+                        sizeClass="w-8 h-8"
+                        textSizeClass="text-[10px]"
+                        className="border border-[#91EAAF]"
                       />
                       <div className="min-w-0">
                         <p className="text-xs font-bold text-[#1F4B2C] truncate">{u.name}</p>
@@ -616,19 +639,55 @@ export const CommunityChatModule: React.FC = () => {
                 Load Kayapa Harvest Sample
               </button>
               <button
-                onClick={() => {
+                disabled={!rawNvatInput.trim() || isAiStructuring}
+                onClick={async () => {
                   if (!rawNvatInput.trim()) return;
                   setIsAiStructuring(true);
-                  setTimeout(() => {
-                    publishStructuredNvatBulletin(nvatReport.items, 'NVAT Terminal Ingestion');
+                  const today = new Date().toISOString().split('T')[0];
+                  try {
+                    const res = await fetch('/api/ai/nvat-parse', {
+                      method: 'POST',
+                      headers: { 'Content-Type': 'application/json' },
+                      body: JSON.stringify({ rawText: rawNvatInput, defaultDate: today }),
+                    });
+                    const data = res.ok ? await res.json() : { items: null };
+                    const parsed: NvatMarketItem[] =
+                      Array.isArray(data.items) && data.items.length > 0
+                        ? data.items.map((it: any, idx: number) => {
+                            const prev = Number(it.prevailingPricePhp) || 35;
+                            const previous = Number(it.previousPricePhp) || prev;
+                            const variance = Math.round(((prev - previous) / Math.max(previous, 1)) * 1000) / 10;
+                            return {
+                              id: `nvat-${Date.now()}-${idx}`,
+                              commodityName: String(it.commodityName || 'NVAT Commodity'),
+                              category: (it.category as any) || 'Highland Vegetables',
+                              minPricePhp: Number(it.minPricePhp) || Math.round(prev * 0.9),
+                              maxPricePhp: Number(it.maxPricePhp) || Math.round(prev * 1.1),
+                              prevailingPricePhp: prev,
+                              previousPricePhp: previous,
+                              priceVariancePercent: variance,
+                              estimatedVolumeTradedTons: Number(it.estimatedVolumeTradedTons) || 15,
+                              marketTrendStatus: variance > 2 ? 'Surging' : variance < -2 ? 'Declining' : 'Stable',
+                              date: today,
+                              unitOfMeasure: 'PHP / kg',
+                              priceType: 'Confirmed',
+                              originalDataSource: 'NVAT Daily Bulletin, Bambang',
+                              requiresReview: false,
+                              lastUpdated: new Date().toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) + ' PHT',
+                            };
+                          })
+                        : parseNvatTextToStructured(rawNvatInput, today);
+                    publishStructuredNvatBulletin(parsed, 'NVAT Terminal Ingestion');
+                  } catch {
+                    publishStructuredNvatBulletin(parseNvatTextToStructured(rawNvatInput, today), 'NVAT Terminal Ingestion');
+                  } finally {
                     setIsAiStructuring(false);
-                    addNotification('NVAT Price Bulletin approved and published to live tables!', 'success');
-                  }, 600);
+                  }
                 }}
-                className="px-5 py-2 rounded-xl btn-sprout text-xs font-black flex items-center gap-2"
+                className="px-5 py-2 rounded-xl btn-sprout text-xs font-black flex items-center gap-2 disabled:opacity-50"
               >
-                <Sparkles className="w-4 h-4 text-[#1F4B2C]" />
-                <span>Validate & Publish to Public Bulletin</span>
+                <Sparkles className={`w-4 h-4 text-[#1F4B2C] ${isAiStructuring ? 'animate-spin' : ''}`} />
+                <span>{isAiStructuring ? 'Parsing Bulletin...' : 'Validate & Publish to Public Bulletin'}</span>
               </button>
             </div>
           </div>
@@ -683,14 +742,13 @@ export const CommunityChatModule: React.FC = () => {
           <div className="relative w-full max-w-md bg-white rounded-3xl shadow-2xl border-2 border-[#91EAAF] overflow-hidden text-left">
             {/* Cover Photo */}
             <div className="h-28 bg-gradient-to-r from-[#1F4B2C] to-[#4D7111] relative">
-              <img
-                src={
-                  inspectedUser.coverPhoto ||
-                  '/assets/aistudio/file_000000000e5c8209a20727869a247797_07ecb429.jpg'
-                }
-                alt="Cover"
-                className="w-full h-full object-cover opacity-80"
-              />
+              {inspectedUser.coverPhoto && (
+                <img
+                  src={inspectedUser.coverPhoto}
+                  alt="Cover"
+                  className="w-full h-full object-cover opacity-85"
+                />
+              )}
               <button
                 onClick={() => setInspectedUser(null)}
                 className="absolute top-3 right-3 w-8 h-8 rounded-full bg-black/50 hover:bg-black/80 text-white flex items-center justify-center font-bold"
@@ -702,10 +760,13 @@ export const CommunityChatModule: React.FC = () => {
             {/* Profile Info */}
             <div className="p-6 pt-0 relative space-y-4">
               <div className="flex items-end justify-between -mt-12 mb-2">
-                <img
-                  src={inspectedUser.avatar}
-                  alt={inspectedUser.name}
-                  className="w-20 h-20 rounded-full object-cover border-4 border-white shadow-lg bg-white"
+                <UserAvatar
+                  name={inspectedUser.name}
+                  avatar={inspectedUser.avatar}
+                  role={inspectedUser.role}
+                  sizeClass="w-20 h-20"
+                  textSizeClass="text-xl"
+                  className="border-4 border-white shadow-lg"
                 />
                 <span className="px-3 py-1 rounded-full text-xs font-black uppercase bg-[#1F4B2C] text-[#C3E956]">
                   {inspectedUser.role}

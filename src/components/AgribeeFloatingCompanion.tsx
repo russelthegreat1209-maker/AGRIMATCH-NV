@@ -15,65 +15,88 @@ import {
 export const AgribeeFloatingCompanion: React.FC = () => {
   const {
     navigateToTabWithGuard,
-    setIsOnboardingOpen,
     currentUser,
     nvatReport,
+    commodities,
   } = useApp();
 
   const [isOpen, setIsOpen] = useState(false);
   const [selectedLanguage, setSelectedLanguage] = useState<'EN' | 'TL' | 'IL'>('EN');
   const [userInput, setUserInput] = useState('');
+  const [isThinking, setIsThinking] = useState(false);
   const [chatHistory, setChatHistory] = useState<
-    { sender: 'user' | 'bee'; text: string; actionTab?: string }[]
+    { sender: 'user' | 'bee'; text: string; actionTab?: string; agentSource?: string }[]
   >([
     {
       sender: 'bee',
-      text: "Bzz! I'm AGRIBEE! How can I assist your agricultural operations in Nueva Vizcaya today?",
+      text: "Hello! I'm AGRIBEE AI. Ask about NVAT prices, 1–2 month barangay climate forecasts, or nearest verified suppliers.",
+      agentSource: 'Orchestrator Agent',
     },
   ]);
 
-  const handleSendQuery = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!userInput.trim()) return;
+  const sendPrompt = async (queryText: string) => {
+    const query = queryText.trim();
+    if (!query || isThinking) return;
 
-    const query = userInput.trim();
     const newHistory = [...chatHistory, { sender: 'user' as const, text: query }];
     setChatHistory(newHistory);
     setUserInput('');
+    setIsThinking(true);
 
-    // Intelligent responses in selected language
-    setTimeout(() => {
-      const q = query.toLowerCase();
-      let responseText = '';
-      let actionTab: string | undefined = undefined;
+    const langCode = selectedLanguage === 'TL' ? 'tl' : selectedLanguage === 'IL' ? 'ilo' : 'en';
+    const topPrices = nvatReport.items
+      .slice(0, 4)
+      .map((i) => `${i.commodityName}: PHP ${i.prevailingPricePhp}/kg (${i.marketTrendStatus})`)
+      .join('; ');
+    const contextSummary = `Active Listings: ${commodities.length}. NVAT Benchmarks: ${topPrices}.`;
 
-      if (q.includes('cabbage') || q.includes('presyo') || q.includes('price')) {
-        if (selectedLanguage === 'TL') {
-          responseText =
-            'Ang prevailing price ng Highland Cabbage sa NVAT Bambang ngayon ay Php 32/kg (bumaba ng 15.8% dahil sa dami ng aning galing Kayapa).';
-        } else if (selectedLanguage === 'IL') {
-          responseText =
-            'Ti presyo ti repolyo idiay NVAT ket Php 32 kada kilo. Adu ti apit manipud Kayapa!';
-        } else {
-          responseText =
-            'Prevailing price for Highland Cabbage at NVAT Bambang is Php 32/kg with 42 metric tons inbound today.';
-        }
-        actionTab = 'marketplace';
-      } else if (q.includes('weather') || q.includes('ulan') || q.includes('panahon')) {
-        responseText =
-          'PAGASA & AI Climate Engine forecasts light rain over Kayapa ridge (21°C) and sunny weather in Bambang (28°C). Week 3 has elevated rainfall risk!';
-        actionTab = 'dashboard';
-      } else if (q.includes('map') || q.includes('gis') || q.includes('supplier')) {
-        responseText =
-          'You can explore the interactive GIS Map with 10m to 100km radius filters and live mountain road routing!';
-        actionTab = 'gis';
+    try {
+      const res = await fetch('/api/ai/agent-chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          prompt: query,
+          role: currentUser?.role || 'Farmer',
+          municipality: currentUser?.municipality || 'Bambang',
+          barangay: currentUser?.barangay || 'Aliaga',
+          language: langCode,
+          history: newHistory.slice(-6),
+          contextSummary,
+        }),
+      });
+
+      if (res.ok) {
+        const data = await res.json();
+        setChatHistory((prev) => [
+          ...prev,
+          {
+            sender: 'bee',
+            text: data.reply || 'Multi-agent response ready.',
+            actionTab: data.actionTab,
+            agentSource: data.agentSource,
+          },
+        ]);
       } else {
-        responseText =
-          "Bzz! I've routed your query through our Multi-Agent mesh. You can check the Marketplace for live listings or the NVAT Price Index for terminal rates!";
+        throw new Error('Agent endpoint unavailable');
       }
+    } catch {
+      setChatHistory((prev) => [
+        ...prev,
+        {
+          sender: 'bee',
+          text: 'NVAT Bambang prices and PAGASA forecasts are synced on your dashboard. Open Marketplace or GIS Map for live hub details.',
+          actionTab: 'marketplace',
+          agentSource: 'Local Agent',
+        },
+      ]);
+    } finally {
+      setIsThinking(false);
+    }
+  };
 
-      setChatHistory((prev) => [...prev, { sender: 'bee', text: responseText, actionTab }]);
-    }, 400);
+  const handleSendQuery = (e: React.FormEvent) => {
+    e.preventDefault();
+    sendPrompt(userInput);
   };
 
   return (
@@ -183,6 +206,13 @@ export const AgribeeFloatingCompanion: React.FC = () => {
                 )}
               </div>
             ))}
+            {isThinking && (
+              <div className="flex items-start">
+                <div className="px-3 py-2 rounded-2xl bg-white border border-[#91EAAF]/60 text-[11px] font-bold text-[#1F4B2C] animate-pulse">
+                  Analyzing hub data...
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Quick Prompts */}
@@ -191,11 +221,12 @@ export const AgribeeFloatingCompanion: React.FC = () => {
               'Cabbage price today?',
               'Rain forecast in Kayapa?',
               'Show nearest suppliers',
-              'Explain Onboarding',
+              'Route to NVAT Bambang',
             ].map((p, i) => (
               <button
                 key={i}
-                onClick={() => setUserInput(p)}
+                type="button"
+                onClick={() => sendPrompt(p)}
                 className="px-2 py-0.5 rounded-full bg-white border border-neutral-200 text-neutral-600 whitespace-nowrap hover:bg-neutral-50"
               >
                 {p}
@@ -214,7 +245,8 @@ export const AgribeeFloatingCompanion: React.FC = () => {
             />
             <button
               type="submit"
-              className="p-2 rounded-full btn-forest shadow-xs hover:scale-105 transition-transform"
+              disabled={isThinking || !userInput.trim()}
+              className="p-2 rounded-full btn-forest shadow-xs hover:scale-105 transition-transform disabled:opacity-50"
               aria-label="Send"
             >
               <Send className="w-3.5 h-3.5 text-[#C3E956]" />

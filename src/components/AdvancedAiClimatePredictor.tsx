@@ -1,17 +1,12 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useEffect, useCallback } from 'react';
 import {
   Sparkles,
   CloudRain,
   Calendar,
-  Compass,
-  AlertTriangle,
-  ChevronRight,
-  TrendingUp,
   Droplets,
   Thermometer,
-  ShieldAlert,
   Leaf,
-  Layers
+  RefreshCw,
 } from 'lucide-react';
 import { NUEVA_VIZCAYA_BARANGAYS } from '../data/nvBarangays';
 import { AdvancedClimatePredictionWeek } from '../types';
@@ -27,24 +22,63 @@ export const AdvancedAiClimatePredictor: React.FC = () => {
 
   const [forecastHorizon, setForecastHorizon] = useState<'1month' | '2months'>('2months');
   const [isSimulatingAgent, setIsSimulatingAgent] = useState(false);
+  const [aiAdvisory, setAiAdvisory] = useState<{
+    synthesis: string;
+    keyActions: string[];
+    agronomicRiskRating: string;
+    poweredByGemini?: boolean;
+  } | null>(null);
+
+  const selectedBarangayInfo = useMemo(() => {
+    return currentMuniData.barangays.find((b) => b.name === selectedBarangayName) || currentMuniData.barangays[0];
+  }, [currentMuniData, selectedBarangayName]);
+
+  const fetchAiForecastSynthesis = useCallback(async (
+    muniName: string,
+    brgyName: string,
+    elev: number,
+    crop: string,
+    horizon: '1month' | '2months'
+  ) => {
+    setIsSimulatingAgent(true);
+    try {
+      const res = await fetch('/api/ai/climate-forecast', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          municipality: muniName,
+          barangay: brgyName,
+          elevationMeters: elev,
+          targetCrop: crop,
+          horizonMonths: horizon === '1month' ? 1 : 2,
+        }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setAiAdvisory(data);
+      }
+    } catch {
+      // Keep grid active if offline
+    } finally {
+      setIsSimulatingAgent(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchAiForecastSynthesis(
+      currentMuniData.municipality,
+      selectedBarangayInfo.name,
+      selectedBarangayInfo.elevationMeters,
+      selectedBarangayInfo.primaryCrops[0] || 'Highland Vegetables',
+      forecastHorizon
+    );
+  }, [currentMuniData.municipality, selectedBarangayInfo, forecastHorizon, fetchAiForecastSynthesis]);
 
   // When municipality changes, reset default barangay
   const handleMunicipalityChange = (newKey: string) => {
     setSelectedMuniKey(newKey);
     const firstBarangay = NUEVA_VIZCAYA_BARANGAYS[newKey]?.barangays[0]?.name || 'Poblacion';
     setSelectedBarangayName(firstBarangay);
-    triggerAiRecalculation();
-  };
-
-  const selectedBarangayInfo = useMemo(() => {
-    return currentMuniData.barangays.find((b) => b.name === selectedBarangayName) || currentMuniData.barangays[0];
-  }, [currentMuniData, selectedBarangayName]);
-
-  const triggerAiRecalculation = () => {
-    setIsSimulatingAgent(true);
-    setTimeout(() => {
-      setIsSimulatingAgent(false);
-    }, 400);
   };
 
   // Generate 8 weeks (covers 2 months / 60 days) of hyper-local predictive data adjusted by elevation & terrain
@@ -136,7 +170,7 @@ export const AdvancedAiClimatePredictor: React.FC = () => {
         {/* Forecast Horizon Switcher */}
         <div className="flex items-center gap-2 bg-white/80 p-1.5 rounded-2xl border border-[#91EAAF] self-start md:self-auto">
           <button
-            onClick={() => { setForecastHorizon('1month'); triggerAiRecalculation(); }}
+            onClick={() => setForecastHorizon('1month')}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
               forecastHorizon === '1month'
                 ? 'bg-[#1F4B2C] text-[#C3E956] shadow-sm'
@@ -146,7 +180,7 @@ export const AdvancedAiClimatePredictor: React.FC = () => {
             1-Month Forecast (30 Days)
           </button>
           <button
-            onClick={() => { setForecastHorizon('2months'); triggerAiRecalculation(); }}
+            onClick={() => setForecastHorizon('2months')}
             className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all ${
               forecastHorizon === '2months'
                 ? 'bg-[#1F4B2C] text-[#C3E956] shadow-sm'
@@ -186,10 +220,7 @@ export const AdvancedAiClimatePredictor: React.FC = () => {
             </label>
             <select
               value={selectedBarangayName}
-              onChange={(e) => {
-                setSelectedBarangayName(e.target.value);
-                triggerAiRecalculation();
-              }}
+              onChange={(e) => setSelectedBarangayName(e.target.value)}
               className="w-full px-3.5 py-2.5 rounded-xl bg-[#F4FFFC] border border-[#91EAAF] text-xs sm:text-sm font-bold text-[#1F4B2C] focus:ring-2 focus:ring-[#1F4B2C] outline-none"
             >
               {currentMuniData.barangays.map((b) => (
@@ -218,13 +249,59 @@ export const AdvancedAiClimatePredictor: React.FC = () => {
         </div>
       </div>
 
-      {/* AI Processing Feedback State */}
-      {isSimulatingAgent && (
-        <div className="p-3 rounded-xl bg-[#91EAAF]/30 text-center text-xs font-bold text-[#1F4B2C] animate-pulse flex items-center justify-center gap-2">
-          <Sparkles className="w-4 h-4 text-[#4D7111] animate-spin" />
-          <span>Synchronizing multi-agent microclimate model with PAGASA Doppler vectors...</span>
+      {/* Live Climate Agent Synthesis Panel */}
+      <div className="p-4 sm:p-5 rounded-2xl bg-[#1F4B2C] text-[#F4FFFC] border border-[#C3E956]/50 shadow-md space-y-2.5">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <Sparkles className={`w-4 h-4 text-[#C3E956] ${isSimulatingAgent ? 'animate-spin' : ''}`} />
+            <span className="text-xs font-black uppercase tracking-wider text-[#C3E956]">
+              AI Climate Synthesis • Brgy. {selectedBarangayName}, {currentMuniData.municipality}
+            </span>
+          </div>
+          <div className="flex items-center gap-2">
+            {aiAdvisory?.agronomicRiskRating && (
+              <span className="px-2.5 py-0.5 rounded-full bg-[#C3E956] text-[#1F4B2C] text-[10px] font-black">
+                {aiAdvisory.agronomicRiskRating}
+              </span>
+            )}
+            <button
+              type="button"
+              onClick={() =>
+                fetchAiForecastSynthesis(
+                  currentMuniData.municipality,
+                  selectedBarangayInfo.name,
+                  selectedBarangayInfo.elevationMeters,
+                  selectedBarangayInfo.primaryCrops[0] || 'Highland Vegetables',
+                  forecastHorizon
+                )
+              }
+              disabled={isSimulatingAgent}
+              className="px-2.5 py-1 rounded-full bg-white/15 hover:bg-white/25 text-[10px] font-bold flex items-center gap-1"
+            >
+              <RefreshCw className={`w-3 h-3 ${isSimulatingAgent ? 'animate-spin' : ''}`} />
+              <span>{isSimulatingAgent ? 'Running Agent...' : 'Refresh AI'}</span>
+            </button>
+          </div>
         </div>
-      )}
+
+        <p className="text-xs sm:text-sm text-neutral-100 leading-relaxed font-medium">
+          {aiAdvisory?.synthesis || 'Synthesizing 1–2 month barangay rainfall and temperature outlook...'}
+        </p>
+
+        {aiAdvisory?.keyActions && aiAdvisory.keyActions.length > 0 && (
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-2 pt-1">
+            {aiAdvisory.keyActions.map((act, idx) => (
+              <div
+                key={idx}
+                className="px-3 py-2 rounded-xl bg-white/10 border border-white/15 text-[11px] font-medium text-[#F4FFFC] flex items-start gap-1.5"
+              >
+                <Leaf className="w-3.5 h-3.5 text-[#C3E956] shrink-0 mt-0.5" />
+                <span>{act}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
 
       {/* Timeline Grid (4 or 8 weeks) */}
       <div className="space-y-4">

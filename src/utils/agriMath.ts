@@ -203,3 +203,48 @@ export function parseNvatTextToStructured(rawText: string, defaultDate: string):
 
   return results;
 }
+
+/**
+ * Extracts 1-2 uppercase initials from a stakeholder or organization name.
+ */
+export function getUserInitials(name: string): string {
+  const cleaned = (name || '')
+    .replace(/\(.*?\)/g, ' ')
+    .replace(/[^a-zA-Z0-9\s]/g, ' ')
+    .trim();
+  if (!cleaned) return 'NV';
+  const parts = cleaned.split(/\s+/).filter(Boolean);
+  if (parts.length === 1) {
+    return parts[0].slice(0, 2).toUpperCase();
+  }
+  return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+}
+
+/**
+ * Builds deterministic real-world geographic boundary polygon vertices around a municipality centroid.
+ */
+export function buildMunicipalGeoPolygon(
+  centroid: { lat: number; lng: number },
+  areaKm2: number,
+  seedIndex: number = 0
+): { lat: number; lng: number }[] {
+  const radiusKm = Math.max(3.5, Math.sqrt(Math.max(areaKm2, 40) / Math.PI) * 0.88);
+  const kmPerDegLat = 111.32;
+  const cosLat = Math.max(0.2, Math.cos((centroid.lat * Math.PI) / 180));
+  const kmPerDegLng = kmPerDegLat * cosLat;
+
+  const numVertices = 7;
+  const points: { lat: number; lng: number }[] = [];
+  for (let i = 0; i < numVertices; i++) {
+    const angle = (i * 2 * Math.PI) / numVertices + (seedIndex % 5) * 0.14;
+    const harmonic = 0.85 + 0.25 * Math.sin(i * 2.1 + seedIndex * 1.7);
+    const dLat = (Math.sin(angle) * radiusKm * harmonic) / kmPerDegLat;
+    const dLng = (Math.cos(angle) * radiusKm * harmonic) / kmPerDegLng;
+    points.push({
+      lat: Math.round((centroid.lat + dLat) * 10000) / 10000,
+      lng: Math.round((centroid.lng + dLng) * 10000) / 10000,
+    });
+  }
+  return points;
+}
+

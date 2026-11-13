@@ -1,13 +1,11 @@
 import React, { useState, useRef } from 'react';
 import { useApp } from '../context/AppContext';
 import {
-  User,
   ShieldCheck,
   MapPin,
   Phone,
   Building,
   CheckCircle2,
-  Calendar,
   LogOut,
   Users,
   Camera,
@@ -15,84 +13,24 @@ import {
   Edit3,
   X,
   Upload,
-  Sparkles,
   ShoppingBag,
-  ExternalLink,
+  MessageSquare,
+  Heart,
+  RotateCcw,
 } from 'lucide-react';
 import { NV_MUNICIPALITIES } from '../data/nvMunicipalBoundaries';
-
-const PRESET_COVERS = [
-  {
-    name: 'Malico Mountain Ridge & Cloud Forest',
-    url: 'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1200&q=80',
-    tag: 'Highland Border',
-  },
-  {
-    name: 'Bambang Rice Terraces & Magat Basin',
-    url: 'https://images.unsplash.com/photo-1500937386664-56d1dfef3854?auto=format&fit=crop&w=1200&q=80',
-    tag: 'Trading Capital',
-  },
-  {
-    name: 'Kasibu Mandarin & Citrus Orchards',
-    url: 'https://images.unsplash.com/photo-1618160702438-9b02ab6515c9?auto=format&fit=crop&w=1200&q=80',
-    tag: 'Citrus Capital',
-  },
-  {
-    name: 'Kayapa Organic Vegetable Valleys',
-    url: 'https://images.unsplash.com/photo-1592982537447-7440770cbfc9?auto=format&fit=crop&w=1200&q=80',
-    tag: 'Salad Bowl',
-  },
-  {
-    name: 'Dalton Pass Agro-Logistics Highway',
-    url: 'https://images.unsplash.com/photo-1464822759023-fed622ff2c3b?auto=format&fit=crop&w=1200&q=80',
-    tag: 'Logistics Artery',
-  },
-];
-
-const PRESET_AVATARS = [
-  {
-    name: 'AgriBee Companion (Default)',
-    url: '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121743_0000_c74c3479.webp',
-  },
-  {
-    name: 'Analyst Bee (Thinking)',
-    url: '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121627_0000_f57600cd.webp',
-  },
-  {
-    name: 'Trading Bee (Mobile)',
-    url: '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121637_0000_5f169ef9.webp',
-  },
-  {
-    name: 'Harvest Bee (Honey)',
-    url: '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121651_0000_ca62b095.webp',
-  },
-  {
-    name: 'Field Scout Bee (Alert)',
-    url: '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121640_0000_12f5433f.webp',
-  },
-  {
-    name: 'AgriBee Cultivator (Watering)',
-    url: '/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121731_0000_3693cdfa.webp',
-  },
-  {
-    name: 'Master Farmer Profile',
-    url: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=300&q=80',
-  },
-  {
-    name: 'Cooperative Officer',
-    url: 'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?auto=format&fit=crop&w=300&q=80',
-  },
-];
+import { UserAvatar } from './UserAvatar';
 
 export const UserProfileModule: React.FC = () => {
   const {
     currentUser,
     orders,
     commodities,
+    communityPosts,
     setIsDemoSwitcherOpen,
     logout,
     updateUserProfile,
-    environmentMode,
+    setActiveTab,
     t,
   } = useApp();
 
@@ -122,6 +60,7 @@ export const UserProfileModule: React.FC = () => {
     (o) => o.buyerId === currentUser.id || o.supplierId === currentUser.id
   );
   const myCommodities = commodities.filter((c) => c.supplierId === currentUser.id);
+  const myPosts = communityPosts.filter((p) => p.authorId === currentUser.id);
 
   const openEditModal = () => {
     setEditName(currentUser.name || '');
@@ -178,62 +117,52 @@ export const UserProfileModule: React.FC = () => {
     }
   };
 
-  const activeCover =
-    currentUser.coverPhoto ||
-    'https://images.unsplash.com/photo-1500382017468-9049fed747ef?auto=format&fit=crop&w=1200&q=80';
+  const activeCover = currentUser.coverPhoto?.trim() || '';
 
   return (
     <div className="space-y-6 pb-20 text-left animate-fade-in max-w-5xl mx-auto">
       {/* Profile Header with Customizable Cover & Avatar */}
       <div className="bg-white rounded-3xl border border-[#91EAAF] shadow-xl overflow-hidden relative">
         {/* Cover Photo Banner */}
-        <div className="relative h-48 sm:h-64 w-full bg-neutral-800 overflow-hidden group">
-          <img
-            src={activeCover}
-            alt="Profile Cover Banner"
-            className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
-          />
-          <div className="absolute inset-0 bg-gradient-to-t from-black/70 via-black/20 to-transparent" />
+        <div className="relative h-48 sm:h-64 w-full bg-gradient-to-br from-[#1F4B2C] via-[#2D6A3E] to-[#4D7111] overflow-hidden group">
+          {activeCover && (
+            <img
+              src={activeCover}
+              alt="Profile Cover Banner"
+              className="w-full h-full object-cover transition-transform duration-500 group-hover:scale-105"
+            />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/60 via-black/15 to-transparent" />
 
           {/* Change Cover Button */}
           <button
             onClick={() => setIsCoverModalOpen(true)}
             className="absolute top-4 right-4 px-3.5 py-1.5 rounded-full bg-black/60 hover:bg-black/80 text-white text-xs font-bold backdrop-blur-md flex items-center gap-1.5 border border-white/20 transition-all shadow-md"
-            title="Customize Cover Photo"
+            title="Upload Cover Photo"
           >
             <Camera className="w-3.5 h-3.5" />
             <span>{t.changeCover}</span>
           </button>
-
-          {/* Environment Tag */}
-          <div className="absolute top-4 left-4">
-            <span
-              className={`px-3 py-1 rounded-full text-[11px] font-black uppercase tracking-wider shadow-sm ${
-                environmentMode === 'production'
-                  ? 'bg-emerald-600 text-white'
-                  : 'bg-amber-400 text-neutral-900 font-extrabold'
-              }`}
-            >
-              {environmentMode === 'production' ? 'Live Verified Profile' : 'Demo Sandbox Persona'}
-            </span>
-          </div>
         </div>
 
         {/* Profile Details Container */}
-        <div className="px-6 sm:px-8 pb-8 pt-0 relative">
+        <div className="px-6 sm:px-8 pb-8 pt-2 relative">
           {/* Avatar Floating Over Cover */}
-          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 -mt-16 sm:-mt-20 mb-4">
+          <div className="flex flex-col sm:flex-row sm:items-end justify-between gap-4 mb-4">
             <div className="flex flex-col sm:flex-row items-center sm:items-end gap-4 text-center sm:text-left">
-              <div className="relative group/avatar">
-                <img
-                  src={currentUser.avatar}
-                  alt={currentUser.name}
-                  className="w-28 h-28 sm:w-32 sm:h-32 rounded-full object-cover border-4 border-white shadow-xl bg-white"
+              <div className="relative group/avatar -mt-16 sm:-mt-20 shrink-0">
+                <UserAvatar
+                  name={currentUser.name}
+                  avatar={currentUser.avatar}
+                  role={currentUser.role}
+                  sizeClass="w-28 h-28 sm:w-32 sm:h-32"
+                  textSizeClass="text-3xl sm:text-4xl"
+                  className="border-4 border-white shadow-xl"
                 />
                 <button
                   onClick={() => setIsAvatarModalOpen(true)}
                   className="absolute bottom-1 right-1 p-2 rounded-full bg-[#1F4B2C] text-[#C3E956] hover:bg-[#4D7111] shadow-lg border-2 border-white transition-transform hover:scale-110"
-                  title="Change Avatar"
+                  title="Upload Profile Photo"
                   aria-label="Change Avatar"
                 >
                   <Camera className="w-4 h-4" />
@@ -271,15 +200,13 @@ export const UserProfileModule: React.FC = () => {
                 <Edit3 className="w-3.5 h-3.5 text-[#C3E956]" />
                 <span>{t.editProfile}</span>
               </button>
-              {environmentMode === 'demo' && (
-                <button
-                  onClick={() => setIsDemoSwitcherOpen(true)}
-                  className="px-4 py-2 rounded-full btn-sprout text-xs font-bold flex items-center gap-1.5 shadow-sm"
-                >
-                  <Users className="w-3.5 h-3.5 text-[#1F4B2C]" />
-                  <span>{t.switchProfile}</span>
-                </button>
-              )}
+              <button
+                onClick={() => setIsDemoSwitcherOpen(true)}
+                className="px-4 py-2 rounded-full btn-sprout text-xs font-bold flex items-center gap-1.5 shadow-sm"
+              >
+                <Users className="w-3.5 h-3.5 text-[#1F4B2C]" />
+                <span>{t.switchProfile}</span>
+              </button>
               <button
                 onClick={logout}
                 className="px-4 py-2 rounded-full border border-neutral-300 bg-white hover:bg-red-50 hover:text-red-600 text-neutral-700 text-xs font-bold flex items-center gap-1.5 transition-colors"
@@ -425,6 +352,64 @@ export const UserProfileModule: React.FC = () => {
         </div>
       </div>
 
+      {/* User's Posted Community Activities */}
+      <div className="bg-white p-6 rounded-3xl border border-[#91EAAF] shadow-md space-y-4">
+        <div className="flex items-center justify-between pb-3 border-b border-neutral-100">
+          <h3 className="text-sm font-black text-[#1F4B2C] flex items-center gap-2">
+            <MessageSquare className="w-4 h-4 text-[#4D7111]" />
+            Posted Community Activities ({myPosts.length})
+          </h3>
+          <button
+            onClick={() => setActiveTab('community')}
+            className="text-xs font-bold text-[#1F4B2C] hover:underline"
+          >
+            Open Community Wall →
+          </button>
+        </div>
+
+        {myPosts.length === 0 ? (
+          <div className="p-6 text-center text-xs text-neutral-400 bg-neutral-50 rounded-2xl">
+            No community posts published under this account yet.
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {myPosts.map((post) => (
+              <div
+                key={post.id}
+                className="p-4 rounded-2xl bg-neutral-50 border border-neutral-100 space-y-2 text-xs"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-[#1F4B2C] text-[#C3E956]">
+                    {post.category}
+                  </span>
+                  <span className="text-[10px] text-neutral-400">{post.timestamp}</span>
+                </div>
+                <p className="text-neutral-700 font-medium leading-relaxed line-clamp-3">
+                  {post.content}
+                </p>
+                {post.imageUrl && (
+                  <img
+                    src={post.imageUrl}
+                    alt="Activity attachment"
+                    className="w-full h-28 object-cover rounded-xl border border-neutral-200"
+                  />
+                )}
+                <div className="flex items-center gap-4 pt-1 text-[11px] font-bold text-neutral-500">
+                  <span className="flex items-center gap-1">
+                    <Heart className="w-3.5 h-3.5 text-red-500" />
+                    {post.likes.length} Likes
+                  </span>
+                  <span className="flex items-center gap-1">
+                    <MessageSquare className="w-3.5 h-3.5 text-[#4D7111]" />
+                    {post.comments.length} Comments
+                  </span>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Edit Profile Details Modal */}
       {isEditProfileOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
@@ -541,190 +526,147 @@ export const UserProfileModule: React.FC = () => {
         </div>
       )}
 
-      {/* Customize Cover Photo Modal */}
+      {/* Upload Cover Photo Modal (Upload Only — No Templates) */}
       {isCoverModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-2xl w-full p-6 sm:p-8 shadow-2xl border border-[#91EAAF] animate-scale-up space-y-5">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#91EAAF] animate-scale-up space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
               <div>
                 <h3 className="text-lg font-black text-[#1F4B2C] flex items-center gap-2">
                   <ImageIcon className="w-5 h-5 text-[#4D7111]" />
-                  Customize Cover Photo
+                  Upload Cover Photo
                 </h3>
                 <p className="text-xs text-neutral-500">
-                  Select a scenic Nueva Vizcaya landscape or upload your farm banner.
+                  Upload a cover image from your device or paste an image URL.
                 </p>
               </div>
               <button
                 onClick={() => setIsCoverModalOpen(false)}
                 className="p-1 rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100"
+                aria-label="Close cover modal"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Presets Grid */}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-2">
-                Nueva Vizcaya Scenic Presets
-              </h4>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {PRESET_COVERS.map((preset) => (
-                  <div
-                    key={preset.name}
-                    onClick={() => handleCoverSelect(preset.url)}
-                    className="relative h-28 rounded-2xl overflow-hidden cursor-pointer border-2 border-transparent hover:border-[#4D7111] shadow-xs group transition-all"
-                  >
-                    <img
-                      src={preset.url}
-                      alt={preset.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                    />
-                    <div className="absolute inset-0 bg-gradient-to-t from-black/80 via-black/20 to-transparent flex flex-col justify-end p-2.5 text-left">
-                      <span className="text-[10px] font-black uppercase text-[#C3E956] tracking-wide">
-                        {preset.tag}
-                      </span>
-                      <span className="text-xs font-bold text-white leading-tight">
-                        {preset.name}
-                      </span>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <div className="space-y-4">
+              <input
+                type="file"
+                accept="image/*"
+                ref={coverFileInputRef}
+                onChange={(e) => handleFileUpload(e, 'cover')}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => coverFileInputRef.current?.click()}
+                className="w-full py-4 px-4 rounded-2xl border-2 border-dashed border-[#91EAAF] bg-[#F4FFFC] hover:bg-[#91EAAF]/20 text-xs font-black text-[#1F4B2C] flex items-center justify-center gap-2 transition-colors"
+              >
+                <Upload className="w-4 h-4 text-[#4D7111]" />
+                <span>Choose Cover Image File</span>
+              </button>
 
-            {/* Upload or Custom URL */}
-            <div className="pt-3 border-t border-neutral-200 space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-                Or Upload Custom Farm Banner
-              </h4>
-              <div className="flex flex-col sm:flex-row items-center gap-2">
+              <div className="flex items-center gap-2">
                 <input
-                  type="file"
-                  accept="image/*"
-                  ref={coverFileInputRef}
-                  onChange={(e) => handleFileUpload(e, 'cover')}
-                  className="hidden"
+                  type="url"
+                  placeholder="Or paste image URL (https://...)"
+                  value={customCoverUrl}
+                  onChange={(e) => setCustomCoverUrl(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-xs focus:outline-none focus:border-[#4D7111]"
                 />
                 <button
                   type="button"
-                  onClick={() => coverFileInputRef.current?.click()}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-neutral-300 bg-neutral-50 hover:bg-neutral-100 text-xs font-bold text-[#1F4B2C] flex items-center justify-center gap-2 transition-colors"
+                  disabled={!customCoverUrl.trim()}
+                  onClick={() => handleCoverSelect(customCoverUrl.trim())}
+                  className="px-4 py-2 rounded-xl bg-[#1F4B2C] disabled:bg-neutral-300 text-[#F4FFFC] text-xs font-bold transition-colors"
                 >
-                  <Upload className="w-4 h-4 text-[#4D7111]" />
-                  <span>Upload Image File</span>
+                  Apply
                 </button>
-
-                <div className="flex-1 w-full flex items-center gap-1.5">
-                  <input
-                    type="url"
-                    placeholder="Or paste image URL (https://...)"
-                    value={customCoverUrl}
-                    onChange={(e) => setCustomCoverUrl(e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-xs focus:outline-none focus:border-[#4D7111]"
-                  />
-                  <button
-                    type="button"
-                    disabled={!customCoverUrl.trim()}
-                    onClick={() => handleCoverSelect(customCoverUrl.trim())}
-                    className="px-3 py-2 rounded-xl bg-[#1F4B2C] disabled:bg-neutral-300 text-[#F4FFFC] text-xs font-bold transition-colors"
-                  >
-                    Apply
-                  </button>
-                </div>
               </div>
+
+              {currentUser.coverPhoto && (
+                <button
+                  type="button"
+                  onClick={() => handleCoverSelect('')}
+                  className="w-full py-2 rounded-xl border border-neutral-200 text-xs font-bold text-neutral-600 hover:bg-neutral-50 flex items-center justify-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset to Default Banner</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Customize Avatar Modal */}
+      {/* Upload Profile Photo Modal (Upload Only — No Templates) */}
       {isAvatarModalOpen && (
         <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 overflow-y-auto">
-          <div className="bg-white rounded-3xl max-w-xl w-full p-6 sm:p-8 shadow-2xl border border-[#91EAAF] animate-scale-up space-y-5">
+          <div className="bg-white rounded-3xl max-w-lg w-full p-6 sm:p-8 shadow-2xl border border-[#91EAAF] animate-scale-up space-y-5">
             <div className="flex items-center justify-between pb-3 border-b border-neutral-200">
               <div>
                 <h3 className="text-lg font-black text-[#1F4B2C] flex items-center gap-2">
                   <Camera className="w-5 h-5 text-[#4D7111]" />
-                  Change Profile Photo / Avatar
+                  Upload Profile Photo
                 </h3>
                 <p className="text-xs text-neutral-500">
-                  Select an AgriBee persona or upload your authentic farmer photo.
+                  Upload a photo for this account or keep default letter initials.
                 </p>
               </div>
               <button
                 onClick={() => setIsAvatarModalOpen(false)}
                 className="p-1 rounded-full text-neutral-400 hover:text-neutral-700 hover:bg-neutral-100"
+                aria-label="Close avatar modal"
               >
                 <X className="w-5 h-5" />
               </button>
             </div>
 
-            {/* Presets Grid */}
-            <div>
-              <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400 mb-3">
-                Character & Stakeholder Presets
-              </h4>
-              <div className="grid grid-cols-4 sm:grid-cols-4 gap-3">
-                {PRESET_AVATARS.map((av) => (
-                  <div
-                    key={av.name}
-                    onClick={() => handleAvatarSelect(av.url)}
-                    className="flex flex-col items-center gap-1.5 p-2 rounded-2xl border-2 border-transparent hover:border-[#4D7111] hover:bg-[#F4FFFC] cursor-pointer transition-all group"
-                  >
-                    <img
-                      src={av.url}
-                      alt={av.name}
-                      className="w-16 h-16 rounded-full object-cover border-2 border-[#91EAAF] shadow-xs group-hover:scale-105 transition-transform"
-                    />
-                    <span className="text-[10px] font-bold text-neutral-700 text-center leading-tight line-clamp-1">
-                      {av.name.split(' (')[0]}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            </div>
+            <div className="space-y-4">
+              <input
+                type="file"
+                accept="image/*"
+                ref={avatarFileInputRef}
+                onChange={(e) => handleFileUpload(e, 'avatar')}
+                className="hidden"
+              />
+              <button
+                type="button"
+                onClick={() => avatarFileInputRef.current?.click()}
+                className="w-full py-4 px-4 rounded-2xl border-2 border-dashed border-[#91EAAF] bg-[#F4FFFC] hover:bg-[#91EAAF]/20 text-xs font-black text-[#1F4B2C] flex items-center justify-center gap-2 transition-colors"
+              >
+                <Upload className="w-4 h-4 text-[#4D7111]" />
+                <span>Choose Profile Image File</span>
+              </button>
 
-            {/* Upload or Custom URL */}
-            <div className="pt-3 border-t border-neutral-200 space-y-3">
-              <h4 className="text-xs font-bold uppercase tracking-wider text-neutral-400">
-                Or Upload Custom Profile Photo
-              </h4>
-              <div className="flex flex-col sm:flex-row items-center gap-2">
+              <div className="flex items-center gap-2">
                 <input
-                  type="file"
-                  accept="image/*"
-                  ref={avatarFileInputRef}
-                  onChange={(e) => handleFileUpload(e, 'avatar')}
-                  className="hidden"
+                  type="url"
+                  placeholder="Or paste image URL (https://...)"
+                  value={customAvatarUrl}
+                  onChange={(e) => setCustomAvatarUrl(e.target.value)}
+                  className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-xs focus:outline-none focus:border-[#4D7111]"
                 />
                 <button
                   type="button"
-                  onClick={() => avatarFileInputRef.current?.click()}
-                  className="w-full sm:w-auto px-4 py-2.5 rounded-xl border border-neutral-300 bg-neutral-50 hover:bg-neutral-100 text-xs font-bold text-[#1F4B2C] flex items-center justify-center gap-2 transition-colors"
+                  disabled={!customAvatarUrl.trim()}
+                  onClick={() => handleAvatarSelect(customAvatarUrl.trim())}
+                  className="px-4 py-2 rounded-xl bg-[#1F4B2C] disabled:bg-neutral-300 text-[#F4FFFC] text-xs font-bold transition-colors"
                 >
-                  <Upload className="w-4 h-4 text-[#4D7111]" />
-                  <span>Upload Image File</span>
+                  Apply
                 </button>
-
-                <div className="flex-1 w-full flex items-center gap-1.5">
-                  <input
-                    type="url"
-                    placeholder="Or paste image URL (https://...)"
-                    value={customAvatarUrl}
-                    onChange={(e) => setCustomAvatarUrl(e.target.value)}
-                    className="flex-1 px-3 py-2 rounded-xl border border-neutral-300 text-xs focus:outline-none focus:border-[#4D7111]"
-                  />
-                  <button
-                    type="button"
-                    disabled={!customAvatarUrl.trim()}
-                    onClick={() => handleAvatarSelect(customAvatarUrl.trim())}
-                    className="px-3 py-2 rounded-xl bg-[#1F4B2C] disabled:bg-neutral-300 text-[#F4FFFC] text-xs font-bold transition-colors"
-                  >
-                    Apply
-                  </button>
-                </div>
               </div>
+
+              {currentUser.avatar && (
+                <button
+                  type="button"
+                  onClick={() => handleAvatarSelect('')}
+                  className="w-full py-2 rounded-xl border border-neutral-200 text-xs font-bold text-neutral-600 hover:bg-neutral-50 flex items-center justify-center gap-1.5"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset to Letter Initials</span>
+                </button>
+              )}
             </div>
           </div>
         </div>

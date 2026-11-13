@@ -12,6 +12,7 @@ import {
   Globe,
   Check,
 } from 'lucide-react';
+import { UserAvatar } from './UserAvatar';
 
 export const TopNav: React.FC = () => {
   const {
@@ -77,77 +78,32 @@ export const TopNav: React.FC = () => {
 
         {/* Center: Persistent Environment Indicator Badge & Quick Switchers */}
         <div className="flex items-center gap-1.5 sm:gap-2">
-          {/* Persistent Environment Indicator Badge */}
-          <div className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1 rounded-full text-xs font-black border shadow-xs tracking-tight">
-            {environmentMode === 'demo' ? (
-              <div className="flex items-center gap-1.5 text-[#1F4B2C]">
-                <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-                <span className="font-mono text-[10px] sm:text-[11px] font-black tracking-wider uppercase">
-                  {t.demoSandbox}
-                </span>
-                <button
-                  onClick={() => setEnvironmentMode('production')}
-                  className="ml-1 text-[10px] text-neutral-500 hover:text-[#1F4B2C] underline font-semibold hidden sm:inline"
-                  title="Switch to Live Production"
-                >
-                  ({t.goLive})
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-1.5 text-emerald-900 bg-emerald-50 px-2 py-0.5 rounded-full border border-emerald-300">
-                <span className="w-2 h-2 rounded-full bg-emerald-600" />
-                <span className="font-mono text-[10px] sm:text-[11px] font-black tracking-wider uppercase">
-                  {t.liveProduction}
-                </span>
-                <button
-                  onClick={() => setEnvironmentMode('demo')}
-                  className="ml-1 text-[10px] text-neutral-500 hover:text-emerald-900 underline font-semibold hidden sm:inline"
-                  title="Switch to Demo Sandbox"
-                >
-                  ({t.goDemo})
-                </button>
-              </div>
-            )}
+          {/* Role Switcher Dropdown */}
+          <div className="hidden xl:flex items-center gap-1 bg-white px-2.5 py-1 rounded-full border border-[#91EAAF] shadow-xs">
+            <span className="text-[10px] font-bold text-[#4D7111] uppercase tracking-wider">
+              {t.demoRole}
+            </span>
+            <select
+              value={currentUser?.role || 'Farmer'}
+              onChange={(e) => switchDemoRole(e.target.value as any)}
+              className="bg-transparent text-xs font-black text-[#1F4B2C] focus:outline-none cursor-pointer pr-1"
+              aria-label="Switch Role"
+            >
+              <option value="Farmer">Farmer</option>
+              <option value="Supplier">Supplier / Trader</option>
+              <option value="Cooperative">Cooperative</option>
+              <option value="Buyer">Wholesale Buyer</option>
+              <option value="MASTER_ADMIN">Master Admin</option>
+            </select>
           </div>
-
-          {/* Quick Demo Role Switcher Dropdown */}
-          {environmentMode === 'demo' && (
-            <div className="hidden xl:flex items-center gap-1 bg-white px-2.5 py-1 rounded-full border border-[#91EAAF] shadow-xs">
-              <span className="text-[10px] font-bold text-[#4D7111] uppercase tracking-wider">
-                {t.demoRole}
-              </span>
-              <select
-                value={currentUser?.role || 'Farmer'}
-                onChange={(e) => switchDemoRole(e.target.value as any)}
-                className="bg-transparent text-xs font-black text-[#1F4B2C] focus:outline-none cursor-pointer pr-1"
-                aria-label="Switch Demo Role"
-              >
-                <option value="Farmer">Farmer</option>
-                <option value="Supplier">Supplier / Trader</option>
-                <option value="Cooperative">Cooperative</option>
-                <option value="Buyer">Wholesale Buyer</option>
-                <option value="MASTER_ADMIN">Master Admin</option>
-              </select>
-            </div>
-          )}
 
           {/* Public Portal Switcher */}
           <button
             onClick={() => navigateToTabWithGuard('public-landing')}
             className="hidden md:inline-flex items-center gap-1 px-3 py-1 rounded-full bg-neutral-100 hover:bg-neutral-200 border border-neutral-300 text-xs font-bold text-[#1F4B2C] transition-colors"
-            title="Return to Public Landing Gatekeeper"
+            title="Return to Public Portal"
           >
             <span>{t.publicPortal}</span>
-          </button>
-
-          {/* Interactive Conceptual Framework Switcher */}
-          <button
-            onClick={() => navigateToTabWithGuard('framework')}
-            className="hidden xl:inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-50 border border-emerald-300 text-xs font-bold text-emerald-900 hover:bg-emerald-100 transition-colors shadow-xs"
-            title="Open Interactive Input-Process-Output (IPO) Conceptual Framework"
-          >
-            <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
-            <span>{t.ipoFramework}</span>
           </button>
 
           {/* Tap to Check Live PAGASA Weather Feed Button */}
@@ -304,10 +260,13 @@ export const TopNav: React.FC = () => {
                 onClick={() => navigateToTabWithGuard(currentUser.role === 'MASTER_ADMIN' ? 'admin' : 'profile')}
                 className="flex items-center gap-2 px-2 py-1 rounded-full bg-white/90 border border-[#91EAAF] cursor-pointer hover:shadow-xs transition-shadow"
               >
-                <img
-                  src={currentUser.avatar}
-                  alt={currentUser.name}
-                  className="w-7 h-7 rounded-full object-cover border border-[#91EAAF]"
+                <UserAvatar
+                  name={currentUser.name}
+                  avatar={currentUser.avatar}
+                  role={currentUser.role}
+                  sizeClass="w-7 h-7"
+                  textSizeClass="text-[10px]"
+                  className="border border-[#91EAAF]"
                 />
                 <div className="text-left hidden lg:block">
                   <div className="text-xs font-bold text-[#1F4B2C] max-w-[110px] truncate leading-tight">

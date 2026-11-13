@@ -26,12 +26,12 @@ import {
   Code2,
   ExternalLink,
   CheckCircle2,
+  CloudSun,
   ShoppingBag,
   Cpu,
-  LogIn,
-  UserPlus,
-  Leaf
+  Leaf,
 } from 'lucide-react';
+import { UserAvatar } from './UserAvatar';
 
 export const PublicLandingScreen: React.FC = () => {
   const {
@@ -86,20 +86,13 @@ export const PublicLandingScreen: React.FC = () => {
         {/* Quick Links */}
         <div className="hidden lg:flex items-center gap-4 text-xs font-bold text-neutral-600">
           <a href="#hero" className="hover:text-[#1F4B2C] transition-colors">{t.navOverview}</a>
-          <button
-            onClick={() => navigateToTabWithGuard('framework')}
-            className="hover:text-[#1F4B2C] text-emerald-800 font-extrabold flex items-center gap-1 transition-colors cursor-pointer"
-          >
-            <Sparkles className="w-3 h-3 text-emerald-600" />
-            <span>{t.ipoFramework}</span>
-          </button>
           <a href="#intelligence" className="hover:text-[#1F4B2C] transition-colors">{t.navLiveIntel}</a>
           <a href="#offers" className="hover:text-[#1F4B2C] transition-colors">{t.navOffers}</a>
           <a href="#videos" className="hover:text-[#1F4B2C] transition-colors">{t.navVideos}</a>
           <a href="#developers" className="hover:text-[#1F4B2C] transition-colors">{t.navArchitects}</a>
         </div>
 
-        {/* Dual Entry CTAs & Authentication Triggers */}
+        {/* Demo Platform Entry */}
         <div className="flex items-center gap-2">
           <button
             onClick={() => {
@@ -110,17 +103,6 @@ export const PublicLandingScreen: React.FC = () => {
           >
             <Sparkles className="w-3.5 h-3.5 text-[#1F4B2C]" />
             <span>{t.launchDemo}</span>
-          </button>
-
-          <button
-            onClick={() => {
-              setEnvironmentMode('production');
-              setIsOnboardingOpen(true);
-            }}
-            className="px-4 py-2 rounded-xl btn-forest text-xs font-bold flex items-center gap-1.5 shadow-xs"
-          >
-            <LogIn className="w-3.5 h-3.5 text-[#C3E956]" />
-            <span>{t.enterLive}</span>
           </button>
         </div>
       </nav>
@@ -140,11 +122,11 @@ export const PublicLandingScreen: React.FC = () => {
             </div>
 
             <h1 className="text-3xl sm:text-5xl font-black text-[#1F4B2C] tracking-tight leading-tight">
-              Empowering Nueva Vizcaya Agriculture with Multi-Agent AI & Live PAGASA Telemetry
+              Nueva Vizcaya Crop Tracking, AI Climate Forecasts & Direct Market Matching
             </h1>
 
             <p className="text-sm sm:text-base text-neutral-700 font-medium leading-relaxed">
-              AGRIMATCH NV is an integrated, AI-powered digital agricultural ecosystem connecting farmers, suppliers, buyers, agricultural administrators, and researchers across Nueva Vizcaya and neighboring regions. Combining intelligent data extraction, predictive analytics, verified marketplace commerce, and guided onboarding into a unified system.
+              Multi-agent intelligence, 1–2 month PAGASA barangay weather projections, and direct NVAT Bambang supply trading for farmers, cooperatives, suppliers, and buyers.
             </p>
 
             <div className="pt-2 flex flex-wrap items-center gap-3">
@@ -379,11 +361,7 @@ export const PublicLandingScreen: React.FC = () => {
               <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-center">
                 <div className="flex items-center gap-4">
                   <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-[#C3E956]/40 to-[#91EAAF]/40 p-2 flex items-center justify-center border border-[#91EAAF]">
-                    <img
-                      src="/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121805_0000_63ea759a.webp"
-                      alt="Weather Condition"
-                      className="w-full h-full object-contain"
-                    />
+                    <CloudSun className="w-10 h-10 text-[#1F4B2C]" />
                   </div>
                   <div>
                     <div className="text-4xl font-black text-[#1F4B2C]">
@@ -788,157 +766,106 @@ export const PublicLandingScreen: React.FC = () => {
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          {/* Video 1: Nueva Vizcaya Agricultural Terminal Innovation */}
+          {/* Video 1 */}
           <div className="p-5 rounded-3xl bg-white border-2 border-[#91EAAF] shadow-lg space-y-4">
             <div className="relative aspect-video rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-700 group">
               <iframe
                 className="w-full h-full"
-                src="https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ?controls=1&modestbranding=1"
-                title="Nueva Vizcaya Agricultural Terminal Documentary"
+                src="https://www.youtube.com/embed/GcCkQoceR64?autoplay=1&mute=1&loop=1&playlist=GcCkQoceR64&rel=0"
+                title="Nueva Vizcaya Agricultural Innovation Showcase"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
             </div>
             <div>
               <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-emerald-100 text-emerald-800 uppercase">
-                Documentary & Logistics
+                Field Innovation
               </span>
               <h3 className="text-base font-black text-[#1F4B2C] mt-1.5">
-                NVAT Bambang: The Vegetable Lifeline of Luzon
+                Nueva Vizcaya Vegetable Hubs & Market Logistics
               </h3>
-              <p className="text-xs text-neutral-600 mt-1 leading-relaxed">
-                Discover how daily crop inflows from Kayapa, Kasibu, and Solano are aggregated and dispatched through the province's primary trading bay.
-              </p>
             </div>
           </div>
 
-          {/* Video 2: Climate-Resilient High Altitude Farming */}
+          {/* Video 2 */}
           <div className="p-5 rounded-3xl bg-white border-2 border-[#91EAAF] shadow-lg space-y-4">
             <div className="relative aspect-video rounded-2xl overflow-hidden bg-neutral-900 border border-neutral-700 group">
               <iframe
                 className="w-full h-full"
-                src="https://www.youtube-nocookie.com/embed/jfKfPfyJRdk?controls=1&modestbranding=1"
-                title="Climate Resilient Farming in Nueva Vizcaya"
+                src="https://www.youtube.com/embed/0ujMjn4mt6U?autoplay=1&mute=1&loop=1&playlist=0ujMjn4mt6U&rel=0"
+                title="Agricultural Technology & Sustainability"
                 allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture"
                 allowFullScreen
               />
             </div>
             <div>
               <span className="text-[10px] font-bold px-2.5 py-0.5 rounded-full bg-blue-100 text-blue-800 uppercase">
-                Agri-Tech & Climate
+                Climate & Yield Resilience
               </span>
               <h3 className="text-base font-black text-[#1F4B2C] mt-1.5">
-                Malabing Valley Citrus & Highland Cabbage Terraces
+                Smart Highland Cultivation & Produce Care
               </h3>
-              <p className="text-xs text-neutral-600 mt-1 leading-relaxed">
-                Exploring autonomous weather sensing, organic pest management, and post-harvest precooling technology in Kasibu and Kayapa.
-              </p>
             </div>
           </div>
         </div>
       </section>
 
-      {/* 6. WHO DEVELOPED THIS APP: Developer & Research Profiles */}
+      {/* 6. WHO DEVELOPED THIS APP: Researcher & Coaches Portfolio */}
       <section id="developers" className="space-y-6">
         <div className="text-center max-w-2xl mx-auto space-y-2">
           <span className="text-xs font-black uppercase tracking-wider px-3 py-1 rounded-full bg-[#C3E956] text-[#1F4B2C]">
-            Research & Architecture
+            Research & Development
           </span>
           <h2 className="text-2xl sm:text-3xl font-black text-[#1F4B2C] tracking-tight">
             Who Developed This App
           </h2>
           <p className="text-xs sm:text-sm text-neutral-600 font-medium">
-            Meet the lead system architect and research collaborators behind AGRIMATCH-NV.
+            Researcher, Developer, and Advisory Coaches behind AgriMatch NV.
           </p>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {/* Developer Card 1: Russel (Lead System Architect & Admin) */}
-          <div className="p-6 rounded-3xl bg-gradient-to-br from-white to-[#F4FFFC] border-2 border-[#1F4B2C] shadow-xl space-y-4 relative overflow-hidden">
-            <div className="absolute top-0 right-0 bg-[#1F4B2C] text-[#C3E956] text-[10px] font-black uppercase px-3 py-1 rounded-bl-xl">
-              Lead Architect
-            </div>
-
-            <div className="flex items-center gap-3 pt-2">
-              <div className="w-16 h-16 rounded-full bg-[#1F4B2C] p-1 border-2 border-[#C3E956] shadow-md">
-                <img
-                  src="/assets/aistudio/Cute_Farm_B_Character_Set_20261106_121823_0000_2ea129ee.webp"
-                  alt="Russel Lead Architect"
-                  className="w-full h-full object-contain"
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <div className="rounded-3xl bg-white border-2 border-[#91EAAF] shadow-xl overflow-hidden flex flex-col">
+            <img
+              src="/assets/aistudio/Modern_Putih_dan_Kuning_Perkenalan_Anggota_Mahasiswa_Kuliah_Kerja_Nyata_Ins_20261113_100657_0000_27651e95.png"
+              alt="Russel Gurat — Researcher and Developer"
+              className="w-full h-auto object-cover"
+            />
+            <div className="p-5 flex items-center justify-between gap-3 border-t border-neutral-100">
+              <div className="flex items-center gap-3">
+                <UserAvatar
+                  name="Russel Gurat"
+                  role="MASTER_ADMIN"
+                  sizeClass="w-11 h-11"
+                  className="border-2 border-[#91EAAF]"
                 />
+                <div>
+                  <h3 className="text-base font-black text-[#1F4B2C]">Russel Gurat</h3>
+                  <p className="text-xs font-bold text-[#4D7111]">Researcher / Lead Developer</p>
+                </div>
               </div>
-              <div>
-                <h3 className="text-lg font-black text-[#1F4B2C]">Russel</h3>
-                <p className="text-xs font-bold text-[#4D7111]">
-                  Lead Full-Stack Web Developer & UI/UX Architect
-                </p>
-                <p className="text-[10px] text-neutral-400 font-mono mt-0.5">
-                  russelthegreat1209@gmail.com
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs text-neutral-700 leading-relaxed font-medium">
-              System Owner and Data Scientist responsible for the 5-Agent autonomous coordination framework, DOST-PAGASA telemetry integration, Green Glassmorphism UI/UX constitution, and atomic dual-handshake commerce protocols.
-            </p>
-
-            <div className="pt-2 border-t border-[#91EAAF]/40 flex items-center justify-between text-[11px] font-bold text-[#1F4B2C]">
-              <span>Master Admin Authority</span>
-              <span className="px-2 py-0.5 rounded-full bg-[#C3E956]/40 text-[#1F4B2C]">15 Hubs Overseer</span>
+              <span className="px-3 py-1 rounded-full bg-[#1F4B2C] text-[#C3E956] text-[10px] font-black uppercase">
+                Lead Architect
+              </span>
             </div>
           </div>
 
-          {/* Developer Card 2: Agronomic Data Science Collaborator */}
-          <div className="p-6 rounded-3xl bg-white border border-[#91EAAF] shadow-md space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-[#91EAAF]/30 p-1 border border-[#91EAAF] flex items-center justify-center">
-                <Leaf className="w-7 h-7 text-[#1F4B2C]" />
-              </div>
+          <div className="rounded-3xl bg-white border-2 border-[#91EAAF] shadow-xl overflow-hidden flex flex-col">
+            <img
+              src="/assets/aistudio/Modern_Putih_dan_Kuning_Perkenalan_Anggota_Mahasiswa_Kuliah_Kerja_Nyata_Ins_20261113_100746_0000_c3315e93.png"
+              alt="Research Coaches — Mark Anthony C. Malubag and Marc Andrei E. Basco"
+              className="w-full h-auto object-cover"
+            />
+            <div className="p-5 flex items-center justify-between gap-3 border-t border-neutral-100">
               <div>
-                <h3 className="text-base font-black text-[#1F4B2C]">Provincial Agriculture Research Desk</h3>
+                <h3 className="text-base font-black text-[#1F4B2C]">Advisory & Research Coaches</h3>
                 <p className="text-xs font-bold text-[#4D7111]">
-                  Field Extension & RSBSA Validation
-                </p>
-                <p className="text-[10px] text-neutral-400 font-semibold">
-                  Bayombong Capitol Agri Extension
+                  Mark Anthony C. Malubag & Marc Andrei E. Basco
                 </p>
               </div>
-            </div>
-
-            <p className="text-xs text-neutral-600 leading-relaxed font-medium">
-              Curating microclimate terrain datasets, soil moisture coefficients, and organic vegetable certification protocols across high-altitude and valley farming communities.
-            </p>
-
-            <div className="pt-2 border-t border-neutral-100 flex items-center justify-between text-[11px] font-bold text-neutral-600">
-              <span>Domain Collaboration</span>
-              <span className="px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700">PAO-NV Network</span>
-            </div>
-          </div>
-
-          {/* Developer Card 3: NVAT Market Terminal Intelligence */}
-          <div className="p-6 rounded-3xl bg-white border border-[#91EAAF] shadow-md space-y-4">
-            <div className="flex items-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-[#C3E956]/30 p-1 border border-[#91EAAF] flex items-center justify-center">
-                <TrendingUp className="w-7 h-7 text-[#1F4B2C]" />
-              </div>
-              <div>
-                <h3 className="text-base font-black text-[#1F4B2C]">NVAT Terminal Intelligence Group</h3>
-                <p className="text-xs font-bold text-[#4D7111]">
-                  Wholesale Price Parsing & Supply Verification
-                </p>
-                <p className="text-[10px] text-neutral-400 font-semibold">
-                  Bambang Trading Terminal Bay 1-8
-                </p>
-              </div>
-            </div>
-
-            <p className="text-xs text-neutral-600 leading-relaxed font-medium">
-              Standardizing daily vegetable weighing scales, multi-ton arrival telemetry, and NLP price bulletin parsing to ensure transparent market prices for all stakeholders.
-            </p>
-
-            <div className="pt-2 border-t border-neutral-100 flex items-center justify-between text-[11px] font-bold text-neutral-600">
-              <span>Terminal Operations</span>
-              <span className="px-2 py-0.5 rounded-full bg-neutral-100 text-neutral-700">NVAT Bambang</span>
+              <span className="px-3 py-1 rounded-full bg-[#C3E956]/50 text-[#1F4B2C] text-[10px] font-black uppercase">
+                Coaches
+              </span>
             </div>
           </div>
         </div>

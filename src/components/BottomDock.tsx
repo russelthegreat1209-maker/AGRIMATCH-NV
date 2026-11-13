@@ -25,7 +25,6 @@ export const BottomDock: React.FC = () => {
     { id: 'marketplace', label: t.navMarketplace, icon: ShoppingBag },
     { id: 'community', label: t.navCommunity, icon: MessageSquare },
     { id: 'decision-support', label: t.navAiAgents, icon: Cpu },
-    { id: 'framework', label: t.navIpoFramework, icon: ShieldCheck },
     { id: 'messages', label: t.navTradeChat, icon: MessageSquare, badge: unreadInquiries },
     {
       id: currentUser?.role === 'MASTER_ADMIN' ? 'admin' : 'profile',

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useApp } from '../context/AppContext';
 import { StakeholderRole, UserAccount } from '../types';
 import { X, Users, Check, ShieldCheck, MapPin, Search } from 'lucide-react';
+import { UserAvatar } from './UserAvatar';
 
 export const DemoAccountSwitcherDrawer: React.FC = () => {
   const {
@@ -118,10 +119,12 @@ export const DemoAccountSwitcherDrawer: React.FC = () => {
                     : 'bg-white/80 border-neutral-200 hover:border-[#91EAAF] hover:bg-white'
                 }`}
               >
-                <img
-                  src={acc.avatar}
-                  alt={acc.name}
-                  className="w-10 h-10 rounded-full object-cover border border-[#91EAAF] shrink-0 mt-0.5"
+                <UserAvatar
+                  name={acc.name}
+                  avatar={acc.avatar}
+                  role={acc.role}
+                  sizeClass="w-10 h-10"
+                  className="border border-[#91EAAF] mt-0.5"
                 />
 
                 <div className="flex-1 min-w-0">
